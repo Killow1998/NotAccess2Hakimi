@@ -36,6 +36,7 @@ def test_get_config():
     assert "host" in data
     assert "port" in data
     assert "auth_token" in data
+    assert "proxy" in data
 
 
 def test_update_settings():
@@ -48,12 +49,14 @@ def test_update_settings():
         "max_retries": 5,
         "cooldown_seconds": 30,
         "db_path": "test.db",
+        "proxy": "socks5://127.0.0.1:1080",
     })
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
     assert app.state.config.host == "0.0.0.0"
     assert app.state.config.port == 9090
     assert app.state.config.max_retries == 5
+    assert app.state.config.proxy == "socks5://127.0.0.1:1080"
 
 
 def test_add_aistudio_credential():

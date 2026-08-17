@@ -55,8 +55,8 @@ def create_app() -> FastAPI:
     # Store app state
     app.state.pool = pool
     app.state.store = UsageStore(config.db_path)
-    app.state.aistudio = AIStudioAdapter()
-    app.state.antigravity = AntigravityAdapter()
+    app.state.aistudio = AIStudioAdapter(proxy=config.proxy)
+    app.state.antigravity = AntigravityAdapter(proxy=config.proxy)
     app.state.max_retries = config.max_retries
     app.state.config = config
 

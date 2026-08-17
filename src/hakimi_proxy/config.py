@@ -36,6 +36,7 @@ class ProxyConfig:
     max_retries: int = 3
     cooldown_seconds: int = 60
     db_path: str = "hakimi.db"
+    proxy: str = ""
     aistudio_credentials: list[AIStudioCredential] = field(default_factory=list)
     antigravity_credentials: list[AntigravityCredential] = field(default_factory=list)
 
@@ -80,6 +81,7 @@ def load_config(path: str | Path) -> ProxyConfig:
         max_retries=raw.get("max_retries", 3),
         cooldown_seconds=raw.get("cooldown_seconds", 60),
         db_path=raw.get("db_path", "hakimi.db"),
+        proxy=raw.get("proxy", ""),
         aistudio_credentials=ai_creds,
         antigravity_credentials=ag_creds,
     )
@@ -103,6 +105,7 @@ def save_config(config: ProxyConfig, path: str | Path | None = None) -> None:
         "max_retries": config.max_retries,
         "cooldown_seconds": config.cooldown_seconds,
         "db_path": config.db_path,
+        "proxy": config.proxy,
         "aistudio": [
             {
                 "id": c.id,

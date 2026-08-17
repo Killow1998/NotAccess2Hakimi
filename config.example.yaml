@@ -8,6 +8,10 @@ max_retries: 3
 cooldown_seconds: 60
 db_path: hakimi.db
 
+# Upstream proxy for reaching Google APIs (e.g. socks5://127.0.0.1:1080).
+# Leave empty for direct connection. Requires httpx[socks] for SOCKS proxies.
+proxy: ""
+
 # AI Studio credentials (API Key mode)
 # One account can create multiple GCP Projects, each with its own API Key.
 # Rate limits are per-Project, so multiple Projects = more free-tier capacity.

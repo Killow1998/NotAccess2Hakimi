@@ -11,6 +11,9 @@ from hakimi_proxy.pool import PooledCredential
 class UpstreamAdapter(abc.ABC):
     """Interface for upstream provider adapters."""
 
+    def __init__(self, proxy: str = "") -> None:
+        self.proxy = proxy
+
     @property
     @abc.abstractmethod
     def kind(self) -> str:

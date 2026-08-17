@@ -221,6 +221,7 @@ Settings
 <div class="form-group"><label>Max Retries</label><input id="setRetries" type="number" value="3"></div>
 <div class="form-group"><label>Cooldown (seconds)</label><input id="setCooldown" type="number" value="60"></div>
 <div class="form-group full"><label>Database Path</label><input id="setDb" placeholder="hakimi.db"></div>
+<div class="form-group full"><label>Upstream Proxy</label><input id="setProxy" placeholder="socks5://127.0.0.1:1080 (leave empty for direct)"></div>
 <div class="form-group full"><label>Config File</label><input id="setConfigFile" readonly style="opacity:0.6"></div>
 </div>
 <div class="form-actions">
@@ -444,6 +445,7 @@ async function loadSettings() {
     document.getElementById('setRetries').value = c.max_retries || 3;
     document.getElementById('setCooldown').value = c.cooldown_seconds || 60;
     document.getElementById('setDb').value = c.db_path || '';
+    document.getElementById('setProxy').value = c.proxy || '';
     document.getElementById('setConfigFile').value = c.config_file || '';
   } catch(e) { toast(e.message, 'error'); }
 }
@@ -456,6 +458,7 @@ async function saveSettings() {
       max_retries: parseInt(document.getElementById('setRetries').value) || 3,
       cooldown_seconds: parseInt(document.getElementById('setCooldown').value) || 60,
       db_path: document.getElementById('setDb').value.trim() || 'hakimi.db',
+      proxy: document.getElementById('setProxy').value.trim(),
     });
     toast('Settings saved. Restart for host/port/db changes.', 'success');
   } catch(e) { toast(e.message, 'error'); }

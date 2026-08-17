@@ -16,6 +16,8 @@ and SQLite-backed usage tracking.
 - **Traffic metering**: real-time token counting and cost estimation per
   credential, model, and day, stored in SQLite. Queryable via `/v1/usage`.
 - **Bearer auth**: protect the proxy when exposing on LAN/public.
+- **Upstream proxy**: route all upstream traffic (AI Studio + Antigravity
+  OAuth) through a SOCKS/HTTP proxy, e.g. `socks5://127.0.0.1:1080`.
 
 ## Quick Start
 
@@ -96,6 +98,12 @@ Rate limits are per-Project, so N Projects = N x free-tier capacity.
 Requires a one-time browser OAuth flow to obtain `refresh_token`. After that,
 `access_token` is auto-refreshed silently. Cloud Code API endpoints are tried
 in fallback order (daily -> prod).
+
+### Upstream Proxy
+
+Set `proxy` in the config to route all upstream requests through a SOCKS or
+HTTP proxy. This applies to both AI Studio API calls and Antigravity OAuth
+token refresh. Requires `httpx[socks]` (included by default) for SOCKS.
 
 ## Pricing
 

@@ -68,29 +68,37 @@ async def chat_completions(request: Request):
             if cred is None:
                 break
 
+        proxy_url = request.app.state.config.proxy or None
+        client = httpx.AsyncClient(proxy=proxy_url) if proxy_url else httpx.AsyncClient()
         try:
-            async with httpx.AsyncClient() as client:
-                resp = await adapter.forward(body, cred, stream, client)
+            resp = await adapter.forward(body, cred, stream, client)
         except Exception as e:
             logger.warning("Request to %s failed: %s", cred.id, e)
             pool.mark_cooldown(cred)
             last_error = str(e)
+            await client.aclose()
             continue
 
         if resp.status_code == 429:
             retry_after = _parse_retry_after(resp.headers.get("retry-after"))
             pool.mark_cooldown(cred, retry_after)
             last_error = f"Rate limited: {cred.id}"
+            await resp.aclose()
+            await client.aclose()
             continue
 
         if resp.status_code in (401, 403):
             pool.mark_disabled(cred)
             last_error = f"Auth failure: {cred.id}"
+            await resp.aclose()
+            await client.aclose()
             continue
 
         if resp.status_code >= 500:
             pool.mark_cooldown(cred)
             last_error = f"Server error {resp.status_code}: {cred.id}"
+            await resp.aclose()
+            await client.aclose()
             continue
 
         if resp.status_code != 200:
@@ -100,13 +108,18 @@ async def chat_completions(request: Request):
                 last_error += f" -- {json.dumps(err_body)[:200]}"
             except Exception:
                 pass
+            await resp.aclose()
+            await client.aclose()
             continue
 
         # Success
         if stream:
-            return _stream_response(resp, adapter, cred, model, store)
+            return _stream_response(resp, adapter, cred, model, store, client)
         else:
-            return await _non_stream_response(resp, adapter, cred, model, store)
+            resp_body = await _non_stream_response(resp, adapter, cred, model, store)
+            await resp.aclose()
+            await client.aclose()
+            return resp_body
 
     return JSONResponse(
         status_code=503,
@@ -138,7 +151,7 @@ async def _non_stream_response(resp: httpx.Response, adapter: UpstreamAdapter, c
     return JSONResponse(content=body)
 
 
-def _stream_response(resp: httpx.Response, adapter: UpstreamAdapter, cred: PooledCredential, model: str, store) -> StreamingResponse:
+def _stream_response(resp: httpx.Response, adapter: UpstreamAdapter, cred: PooledCredential, model: str, store, client: httpx.AsyncClient) -> StreamingResponse:
     """Handle a streaming response: forward SSE, capture usage, record."""
     chunk_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
     captured_usage: dict | None = None
@@ -182,5 +195,7 @@ def _stream_response(resp: httpx.Response, adapter: UpstreamAdapter, cred: Poole
         finally:
             if captured_usage:
                 _record_usage(store, cred, model, adapter, captured_usage)
+            await resp.aclose()
+            await client.aclose()
 
     return StreamingResponse(generate(), media_type="text/event-stream")

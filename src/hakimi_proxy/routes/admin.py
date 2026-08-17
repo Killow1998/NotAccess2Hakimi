@@ -44,6 +44,7 @@ class SettingsIn(BaseModel):
     max_retries: int = 3
     cooldown_seconds: int = 60
     db_path: str = "hakimi.db"
+    proxy: str = ""
 
 
 def _reload_pool(request: Request, config) -> None:
@@ -55,6 +56,8 @@ def _reload_pool(request: Request, config) -> None:
         pool.add_antigravity(cred)
     request.app.state.pool = pool
     request.app.state.max_retries = config.max_retries
+    request.app.state.aistudio.proxy = config.proxy
+    request.app.state.antigravity.proxy = config.proxy
     request.app.state.config = config
 
 
@@ -76,6 +79,7 @@ async def get_settings(request: Request):
         "max_retries": config.max_retries,
         "cooldown_seconds": config.cooldown_seconds,
         "db_path": config.db_path,
+        "proxy": config.proxy,
         "config_file": get_config_path(),
     }
 
@@ -89,6 +93,7 @@ async def update_settings(settings: SettingsIn, request: Request):
     config.max_retries = settings.max_retries
     config.cooldown_seconds = settings.cooldown_seconds
     config.db_path = settings.db_path
+    config.proxy = settings.proxy
     _load_and_save(request, config)
     logger.info("Settings updated via Web UI")
     return {"status": "ok", "message": "Settings saved. Restart required for host/port/db_path changes."}
