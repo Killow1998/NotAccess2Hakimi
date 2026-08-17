@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>hakimi-proxy</title>
+<style>
+:root {
+  --bg: #0f1115;
+  --surface: #181b21;
+  --surface2: #1e2229;
+  --border: #2a2f38;
+  --text: #d4d8de;
+  --text-dim: #7a808c;
+  --accent: #4f9cf9;
+  --accent-dim: #2a5a9e;
+  --green: #3fb950;
+  --yellow: #d29922;
+  --red: #f85149;
+  --radius: 6px;
+  --font: -apple-system, "Segoe UI", system-ui, sans-serif;
+  --mono: "SF Mono", "Cascadia Code", "Consolas", monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+a { color: var(--accent); text-decoration: none; }
+button { font-family: var(--font); cursor: pointer; border: none; border-radius: var(--radius); padding: 7px 14px; font-size: 13px; transition: opacity .15s; }
+button:hover { opacity: 0.85; }
+input, select { font-family: var(--font); font-size: 13px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 7px 10px; width: 100%; }
+input:focus { outline: none; border-color: var(--accent); }
+label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; font-weight: 500; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-danger { background: var(--red); color: #fff; }
+.btn-ghost { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--surface2); }
+
+/* Layout */
+.app { display: flex; min-height: 100vh; }
+.sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+.sidebar-brand { padding: 16px 18px; font-weight: 700; font-size: 15px; letter-spacing: -0.3px; border-bottom: 1px solid var(--border); }
+.sidebar-brand span { color: var(--accent); }
+.sidebar-nav { flex: 1; padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+.nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--radius); color: var(--text-dim); font-size: 13px; cursor: pointer; transition: all .15s; }
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active { background: var(--accent-dim); color: #fff; }
+.nav-icon { width: 16px; height: 16px; flex-shrink: 0; }
+.sidebar-footer { padding: 12px 18px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-dim); }
+.main { flex: 1; padding: 24px 28px; max-width: 960px; overflow-x: hidden; }
+
+/* Login */
+.login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+.login-box { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 32px; width: 360px; }
+.login-box h2 { font-size: 18px; margin-bottom: 4px; }
+.login-box p { font-size: 13px; color: var(--text-dim); margin-bottom: 20px; }
+.login-box input { margin-bottom: 12px; }
+
+/* Sections */
+.section { display: none; }
+.section.active { display: block; }
+.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.section-header h1 { font-size: 20px; font-weight: 600; }
+.section-header p { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
+
+/* Cards */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+.card-row { display: flex; align-items: center; justify-content: space-between; }
+.card-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.card-meta { font-size: 12px; color: var(--text-dim); font-family: var(--mono); }
+
+/* Stats grid */
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+.stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.stat-value { font-size: 22px; font-weight: 700; }
+.stat-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+/* Badge */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+.badge-active { background: rgba(63,185,80,0.15); color: var(--green); }
+.badge-cooldown { background: rgba(210,153,34,0.15); color: var(--yellow); }
+.badge-disabled { background: rgba(248,81,73,0.15); color: var(--red); }
+.badge-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; }
+td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+tr:last-child td { border-bottom: none; }
+
+/* Forms */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-grid .full { grid-column: 1 / -1; }
+.form-group { margin-bottom: 12px; }
+.form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 100; }
+.modal-overlay.show { display: flex; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 24px; width: 480px; max-width: 90vw; max-height: 85vh; overflow-y: auto; }
+.modal h3 { font-size: 16px; margin-bottom: 16px; }
+
+/* Tabs */
+.tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+.tab { padding: 8px 16px; font-size: 13px; color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent; transition: all .15s; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Toast */
+.toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: var(--radius); font-size: 13px; z-index: 200; opacity: 0; transform: translateY(10px); transition: all .2s; pointer-events: none; }
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast-success { background: var(--green); color: #fff; }
+.toast-error { background: var(--red); color: #fff; }
+
+/* Empty state */
+.empty { text-align: center; padding: 40px; color: var(--text-dim); font-size: 13px; }
+.empty p { margin-top: 8px; }
+
+/* Hidden */
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<div id="loginView" class="login-wrap hidden">
+<div class="login-box">
+<h2>hakimi-proxy</h2>
+<p>Enter your bearer token to access the dashboard.</p>
+<input type="password" id="loginToken" placeholder="Bearer token" onkeydown="if(event.key==='Enter')doLogin()">
+<button class="btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+</div>
+</div>
+
+<!-- App -->
+<div id="appView" class="app hidden">
+<!-- Sidebar -->
+<div class="sidebar">
+<div class="sidebar-brand">hakimi<span>-proxy</span></div>
+<div class="sidebar-nav">
+<div class="nav-item active" data-nav="dashboard" onclick="nav('dashboard')">
+<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+Dashboard
+</div>
+<div class="nav-item" data-nav="credentials" onclick="nav('credentials')">
+<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+Credentials
+</div>
+<div class="nav-item" data-nav="usage" onclick="nav('usage')">
+<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg>
+Usage
+</div>
+<div class="nav-item" data-nav="settings" onclick="nav('settings')">
+<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+Settings
+</div>
+</div>
+<div class="sidebar-footer" id="sidebarFooter"></div>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+<!-- Dashboard -->
+<div class="section active" id="sec-dashboard">
+<div class="section-header">
+<div><h1>Dashboard</h1><p>Proxy status and overview</p></div>
+</div>
+<div class="stats-grid" id="statsGrid"></div>
+<div class="card">
+<div class="card-title">Credential Pool Status</div>
+<div id="poolStatus" style="margin-top:12px"></div>
+</div>
+</div>
+
+<!-- Credentials -->
+<div class="section" id="sec-credentials">
+<div class="section-header">
+<div><h1>Credentials</h1><p>Manage AI Studio and Antigravity accounts</p></div>
+</div>
+<div class="tabs">
+<div class="tab active" data-ctab="aistudio" onclick="ctab('aistudio')">AI Studio</div>
+<div class="tab" data-ctab="antigravity" onclick="ctab('antigravity')">Antigravity</div>
+</div>
+<div id="cred-aistudio">
+<div style="margin-bottom:12px"><button class="btn-primary" onclick="openModal('aistudio')">+ Add AI Studio Key</button></div>
+<div id="aiCredList"></div>
+</div>
+<div id="cred-antigravity" class="hidden">
+<div style="margin-bottom:12px"><button class="btn-primary" onclick="openModal('antigravity')">+ Add Antigravity Account</button></div>
+<div id="agCredList"></div>
+</div>
+</div>
+
+<!-- Usage -->
+<div class="section" id="sec-usage">
+<div class="section-header">
+<div><h1>Usage & Cost</h1><p>Traffic metering across all credentials</p></div>
+<button class="btn-ghost" onclick="loadUsage()">Refresh</button>
+</div>
+<div class="stats-grid" id="usageStats"></div>
+<div class="card" style="margin-top:8px">
+<div class="card-title">By Credential</div>
+<div id="usageByCred" style="margin-top:12px"></div>
+</div>
+<div class="card">
+<div class="card-title">By Model</div>
+<div id="usageByModel" style="margin-top:12px"></div>
+</div>
+</div>
+
+<!-- Settings -->
+<div class="section" id="sec-settings">
+<div class="section-header">
+<div><h1>Settings</h1><p>Proxy configuration (some changes require restart)</p></div>
+</div>
+<div class="card">
+<div class="form-grid">
+<div class="form-group"><label>Host</label><input id="setHost" placeholder="127.0.0.1"></div>
+<div class="form-group"><label>Port</label><input id="setPort" type="number" placeholder="8000"></div>
+<div class="form-group full"><label>Auth Token (Bearer)</label><input id="setAuth" placeholder="Leave empty for no auth"></div>
+<div class="form-group"><label>Max Retries</label><input id="setRetries" type="number" value="3"></div>
+<div class="form-group"><label>Cooldown (seconds)</label><input id="setCooldown" type="number" value="60"></div>
+<div class="form-group full"><label>Database Path</label><input id="setDb" placeholder="hakimi.db"></div>
+<div class="form-group full"><label>Config File</label><input id="setConfigFile" readonly style="opacity:0.6"></div>
+</div>
+<div class="form-actions">
+<button class="btn-primary" onclick="saveSettings()">Save Settings</button>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+<div class="modal" id="modalContent"></div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+let token = localStorage.getItem('hakimi_token') || '';
+let editingType = '';
+let editingId = null;
+
+// --- API ---
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+  if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const resp = await fetch(path, opts);
+  if (resp.status === 401) { showLogin(); throw new Error('Unauthorized'); }
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error?.message || 'Request failed');
+  return data;
+}
+
+// --- Auth ---
+function showLogin() {
+  document.getElementById('loginView').classList.remove('hidden');
+  document.getElementById('appView').classList.add('hidden');
+}
+function doLogin() {
+  token = document.getElementById('loginToken').value.trim();
+  localStorage.setItem('hakimi_token', token);
+  init();
+}
+
+// --- Navigation ---
+function nav(section) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelector(`[data-nav="${section}"]`).classList.add('active');
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('sec-' + section).classList.add('active');
+  if (section === 'dashboard') loadDashboard();
+  if (section === 'credentials') loadCredentials();
+  if (section === 'usage') loadUsage();
+  if (section === 'settings') loadSettings();
+}
+function ctab(tab) {
+  document.querySelectorAll('[data-ctab]').forEach(t => t.classList.remove('active'));
+  document.querySelector(`[data-ctab="${tab}"]`).classList.add('active');
+  document.getElementById('cred-aistudio').classList.toggle('hidden', tab !== 'aistudio');
+  document.getElementById('cred-antigravity').classList.toggle('hidden', tab !== 'antigravity');
+}
+
+// --- Dashboard ---
+async function loadDashboard() {
+  try {
+    const [health, summary] = await Promise.all([
+      api('GET', '/healthz'),
+      api('GET', '/api/usage/summary'),
+    ]);
+    document.getElementById('statsGrid').innerHTML = `
+      <div class="stat-card"><div class="stat-label">Active Credentials</div><div class="stat-value">${health.active_credentials}<span style="font-size:14px;color:var(--text-dim)">/${health.total_credentials}</span></div></div>
+      <div class="stat-card"><div class="stat-label">Total Requests</div><div class="stat-value">${summary.total_requests}</div></div>
+      <div class="stat-card"><div class="stat-label">Total Tokens</div><div class="stat-value">${formatNum(summary.total_input_tokens + summary.total_output_tokens)}</div><div class="stat-sub">${formatNum(summary.total_input_tokens)} in / ${formatNum(summary.total_output_tokens)} out</div></div>
+      <div class="stat-card"><div class="stat-label">Est. Cost (USD)</div><div class="stat-value">$${summary.total_cost_usd.toFixed(4)}</div></div>
+    `;
+    const creds = await api('GET', '/api/credentials');
+    const all = [...creds.aistudio, ...creds.antigravity];
+    if (all.length === 0) {
+      document.getElementById('poolStatus').innerHTML = '<div class="empty">No credentials configured. <a href="#" onclick="nav(\'credentials\');return false">Add one</a></div>';
+    } else {
+      document.getElementById('poolStatus').innerHTML = '<table><thead><tr><th>ID</th><th>Type</th><th>State</th><th>Failures</th><th>Cooldown</th></tr></thead><tbody>' +
+        all.map(c => `<tr><td style="font-family:var(--mono);font-size:12px">${esc(c.id)}</td><td>${c.kind}</td><td>${stateBadge(c.state)}</td><td>${c.failure_count||0}</td><td>${c.cooldown_remaining ? Math.ceil(c.cooldown_remaining)+'s' : '-'}</td></tr>`).join('') +
+        '</tbody></table>';
+    }
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// --- Credentials ---
+async function loadCredentials() {
+  try {
+    const data = await api('GET', '/api/credentials');
+    renderAiCreds(data.aistudio);
+    renderAgCreds(data.antigravity);
+  } catch(e) { toast(e.message, 'error'); }
+}
+function renderAiCreds(creds) {
+  if (!creds.length) { document.getElementById('aiCredList').innerHTML = '<div class="empty">No AI Studio keys yet.<p>Add one with your Google AI Studio API key.</p></div>'; return; }
+  document.getElementById('aiCredList').innerHTML = creds.map(c => `
+    <div class="card">
+      <div class="card-row">
+        <div><div class="card-title">${esc(c.id)}</div><div class="card-meta">${esc(c.api_key)} ${c.account ? ' &middot; ' + esc(c.account) : ''} ${c.project ? ' &middot; ' + esc(c.project) : ''}</div></div>
+        <div style="display:flex;align-items:center;gap:8px">${stateBadge(c.state)}<button class="btn-ghost" onclick="openModal('aistudio','${esc(c.id)}')">Edit</button><button class="btn-danger" onclick="delCred('aistudio','${esc(c.id)}')">Delete</button></div>
+      </div>
+    </div>`).join('');
+}
+function renderAgCreds(creds) {
+  if (!creds.length) { document.getElementById('agCredList').innerHTML = '<div class="empty">No Antigravity accounts yet.<p>Add one with your OAuth credentials.</p></div>'; return; }
+  document.getElementById('agCredList').innerHTML = creds.map(c => `
+    <div class="card">
+      <div class="card-row">
+        <div><div class="card-title">${esc(c.id)}</div><div class="card-meta">${esc(c.refresh_token)}</div></div>
+        <div style="display:flex;align-items:center;gap:8px">${stateBadge(c.state)}<button class="btn-ghost" onclick="openModal('antigravity','${esc(c.id)}')">Edit</button><button class="btn-danger" onclick="delCred('aistudio','${esc(c.id)}')" style="visibility:hidden">-</button><button class="btn-danger" onclick="delCred('antigravity','${esc(c.id)}')">Delete</button></div>
+      </div>
+    </div>`).join('');
+}
+
+function openModal(type, id) {
+  editingType = type;
+  editingId = id;
+  const isEdit = !!id;
+  const m = document.getElementById('modalContent');
+  const overlay = document.getElementById('modalOverlay');
+
+  if (type === 'aistudio') {
+    let cred = { id: '', api_key: '', project: '', account: '' };
+    if (isEdit) {
+      // Fetch fresh data isn't needed; use what's displayed but we need full values
+      // The list endpoint masks keys, so for edit we show placeholders
+    }
+    m.innerHTML = `<h3>${isEdit ? 'Edit' : 'Add'} AI Studio Key</h3>
+      <div class="form-group"><label>ID</label><input id="mId" value="${isEdit ? esc(id) : ''}" ${isEdit ? 'readonly' : ''}></div>
+      <div class="form-group"><label>API Key</label><input id="mApiKey" placeholder="AIzaSy..." style="font-family:var(--mono)"></div>
+      <div class="form-grid">
+        <div class="form-group"><label>Project (optional)</label><input id="mProject"></div>
+        <div class="form-group"><label>Account (optional)</label><input id="mAccount" placeholder="user@gmail.com"></div>
+      </div>
+      <div class="form-actions"><button class="btn-ghost" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="saveCred('aistudio')">${isEdit ? 'Update' : 'Add'}</button></div>`;
+  } else {
+    m.innerHTML = `<h3>${isEdit ? 'Edit' : 'Add'} Antigravity Account</h3>
+      <div class="form-group"><label>ID</label><input id="mId" value="${isEdit ? esc(id) : ''}" ${isEdit ? 'readonly' : ''}></div>
+      <div class="form-group"><label>Client ID</label><input id="mClientId" placeholder="xxx.apps.googleusercontent.com" style="font-family:var(--mono)"></div>
+      <div class="form-group"><label>Client Secret</label><input id="mClientSecret" placeholder="GOCSPX-xxx" style="font-family:var(--mono)"></div>
+      <div class="form-group"><label>Refresh Token</label><input id="mRefreshToken" placeholder="1//xxx" style="font-family:var(--mono)"></div>
+      <div class="form-actions"><button class="btn-ghost" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="saveCred('antigravity')">${isEdit ? 'Update' : 'Add'}</button></div>`;
+  }
+  overlay.classList.add('show');
+}
+function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); }
+document.getElementById('modalOverlay').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+
+async function saveCred(type) {
+  const id = document.getElementById('mId').value.trim();
+  if (!id) { toast('ID is required', 'error'); return; }
+  try {
+    if (type === 'aistudio') {
+      const body = {
+        id,
+        api_key: document.getElementById('mApiKey').value.trim(),
+        project: document.getElementById('mProject').value.trim(),
+        account: document.getElementById('mAccount').value.trim(),
+      };
+      if (!body.api_key) { toast('API Key is required', 'error'); return; }
+      if (editingId) await api('PUT', `/api/credentials/aistudio/${encodeURIComponent(editingId)}`, body);
+      else await api('POST', '/api/credentials/aistudio', body);
+    } else {
+      const body = {
+        id,
+        client_id: document.getElementById('mClientId').value.trim(),
+        client_secret: document.getElementById('mClientSecret').value.trim(),
+        refresh_token: document.getElementById('mRefreshToken').value.trim(),
+      };
+      if (!body.client_id || !body.client_secret || !body.refresh_token) { toast('All fields required', 'error'); return; }
+      if (editingId) await api('PUT', `/api/credentials/antigravity/${encodeURIComponent(editingId)}`, body);
+      else await api('POST', '/api/credentials/antigravity', body);
+    }
+    closeModal();
+    toast(editingId ? 'Updated' : 'Added', 'success');
+    loadCredentials();
+  } catch(e) { toast(e.message, 'error'); }
+}
+async function delCred(type, id) {
+  if (!confirm(`Delete credential "${id}"?`)) return;
+  try {
+    await api('DELETE', `/api/credentials/${type}/${encodeURIComponent(id)}`);
+    toast('Deleted', 'success');
+    loadCredentials();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// --- Usage ---
+async function loadUsage() {
+  try {
+    const s = await api('GET', '/api/usage/summary');
+    document.getElementById('usageStats').innerHTML = `
+      <div class="stat-card"><div class="stat-label">Total Requests</div><div class="stat-value">${s.total_requests}</div></div>
+      <div class="stat-card"><div class="stat-label">Input Tokens</div><div class="stat-value">${formatNum(s.total_input_tokens)}</div></div>
+      <div class="stat-card"><div class="stat-label">Output Tokens</div><div class="stat-value">${formatNum(s.total_output_tokens)}</div></div>
+      <div class="stat-card"><div class="stat-label">Est. Cost</div><div class="stat-value">$${s.total_cost_usd.toFixed(4)}</div></div>
+    `;
+    document.getElementById('usageByCred').innerHTML = s.by_credential.length ?
+      tableHtml(['Credential', 'Requests', 'Input', 'Output', 'Cost'],
+        s.by_credential.map(r => [esc(r.credential_id), r.requests, formatNum(r.input_tokens), formatNum(r.output_tokens), '$'+r.cost_usd.toFixed(4)])) :
+      '<div class="empty">No usage data yet</div>';
+    document.getElementById('usageByModel').innerHTML = s.by_model.length ?
+      tableHtml(['Model', 'Requests', 'Input', 'Output', 'Cost'],
+        s.by_model.map(r => [esc(r.model), r.requests, formatNum(r.input_tokens), formatNum(r.output_tokens), '$'+r.cost_usd.toFixed(4)])) :
+      '<div class="empty">No usage data yet</div>';
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// --- Settings ---
+async function loadSettings() {
+  try {
+    const c = await api('GET', '/api/config');
+    document.getElementById('setHost').value = c.host || '';
+    document.getElementById('setPort').value = c.port || '';
+    document.getElementById('setAuth').value = c.auth_token || '';
+    document.getElementById('setRetries').value = c.max_retries || 3;
+    document.getElementById('setCooldown').value = c.cooldown_seconds || 60;
+    document.getElementById('setDb').value = c.db_path || '';
+    document.getElementById('setConfigFile').value = c.config_file || '';
+  } catch(e) { toast(e.message, 'error'); }
+}
+async function saveSettings() {
+  try {
+    await api('PUT', '/api/config', {
+      host: document.getElementById('setHost').value.trim() || '127.0.0.1',
+      port: parseInt(document.getElementById('setPort').value) || 8000,
+      auth_token: document.getElementById('setAuth').value.trim(),
+      max_retries: parseInt(document.getElementById('setRetries').value) || 3,
+      cooldown_seconds: parseInt(document.getElementById('setCooldown').value) || 60,
+      db_path: document.getElementById('setDb').value.trim() || 'hakimi.db',
+    });
+    toast('Settings saved. Restart for host/port/db changes.', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// --- Helpers ---
+function stateBadge(state) {
+  const map = { active: ['badge-active', '#3fb950'], cooldown: ['badge-cooldown', '#d29922'], disabled: ['badge-disabled', '#f85149'] };
+  const [cls, color] = map[state] || ['badge-cooldown', '#7a808c'];
+  return `<span class="badge ${cls}"><span class="badge-dot" style="background:${color}"></span>${state || 'unknown'}</span>`;
+}
+function formatNum(n) { return (n || 0).toLocaleString(); }
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+function tableHtml(headers, rows) {
+  return '<table><thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>' +
+    rows.map(r => '<tr>' + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody></table>';
+}
+function toast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast toast-' + type + ' show';
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// --- Init ---
+async function init() {
+  try {
+    const health = await api('GET', '/healthz');
+    document.getElementById('loginView').classList.add('hidden');
+    document.getElementById('appView').classList.remove('hidden');
+    document.getElementById('sidebarFooter').textContent = `${health.active_credentials}/${health.total_credentials} active`;
+    loadDashboard();
+  } catch(e) {
+    if (e.message === 'Unauthorized') return;
+    // No auth configured, show app directly
+    document.getElementById('loginView').classList.add('hidden');
+    document.getElementById('appView').classList.remove('hidden');
+    loadDashboard();
+  }
+}
+init();
+</script>
+</body>
+</html>

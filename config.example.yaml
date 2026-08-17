@@ -1,0 +1,33 @@
+# hakimi-proxy configuration
+# Copy to config.yaml and fill in your credentials.
+
+host: 127.0.0.1
+port: 8000
+auth_token: "your-secret-bearer-token"
+max_retries: 3
+cooldown_seconds: 60
+db_path: hakimi.db
+
+# AI Studio credentials (API Key mode)
+# One account can create multiple GCP Projects, each with its own API Key.
+# Rate limits are per-Project, so multiple Projects = more free-tier capacity.
+aistudio:
+  - id: acct1-proj1
+    api_key: "AIzaSy..."
+    project: "my-project-1"
+    account: "user@gmail.com"
+  - id: acct1-proj2
+    api_key: "AIzaSy..."
+    project: "my-project-2"
+    account: "user@gmail.com"
+
+# Antigravity credentials (OAuth mode)
+# Requires a one-time browser OAuth flow to obtain refresh_token.
+# After that, access_token is auto-refreshed silently.
+antigravity:
+  - id: acct2-antigravity
+    client_id: "xxx.apps.googleusercontent.com"
+    client_secret: "GOCSPX-xxx"
+    refresh_token: "1//xxx"
+    access_token: ""      # filled automatically after first refresh
+    expires_at: 0         # 0 = will refresh on first use

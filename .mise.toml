@@ -1,0 +1,5 @@
+[tools]
+uv = "latest"
+
+[env]
+# uv manages Python version and venv; mise provides the uv binary

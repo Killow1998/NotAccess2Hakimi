@@ -1,0 +1,15 @@
+# Custom pricing overrides (per-token, USD)
+# Copy to pricing.yaml to override built-in prices.
+# Values below are the defaults from the official pricing page.
+
+gemini-3.7-flash:
+  input_cost_per_token: 0.00000075
+  output_cost_per_token: 0.00000375
+
+gemini-3.5-flash:
+  input_cost_per_token: 0.0000003
+  output_cost_per_token: 0.0000025
+
+gemini-3.5-flash-lite:
+  input_cost_per_token: 0.0000003
+  output_cost_per_token: 0.0000004
