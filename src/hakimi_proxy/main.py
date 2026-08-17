@@ -17,7 +17,7 @@ from hakimi_proxy.metering.store import UsageStore
 from hakimi_proxy.pool import CredentialPool
 from hakimi_proxy.routes import chat, models, usage
 from hakimi_proxy.routes import admin
-from hakimi_proxy.web import index_html
+from hakimi_proxy.web import _index_path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -68,11 +68,11 @@ def create_app() -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def web_ui():
-        return index_html
+        return _index_path.read_text(encoding="utf-8")
 
     @app.get("/ui", response_class=HTMLResponse)
     async def web_ui_alias():
-        return index_html
+        return _index_path.read_text(encoding="utf-8")
 
     @app.get("/healthz")
     async def healthz():
