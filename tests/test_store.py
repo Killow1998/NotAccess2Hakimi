@@ -73,7 +73,7 @@ def test_filter_by_model():
     with tempfile.TemporaryDirectory() as tmp:
         store = UsageStore(Path(tmp) / "test.db")
         store.record(_make_record(model="gemini-3.7-flash"))
-        store.record(_make_record(model="gemini-2.0-flash"))
+        store.record(_make_record(model="gemini-3.5-flash"))
 
         rows = store.get_usage(model="gemini-3.7-flash")
         assert len(rows) == 1

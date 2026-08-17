@@ -502,8 +502,9 @@ async function loadPlayground() {
   try {
     const data = await api('GET', '/v1/models');
     const sel = document.getElementById('pgModel');
-    sel.innerHTML = data.data.map(m => `<option value="${m.id}">${m.id}</option>`).join('');
-  } catch(e) { toast(e.message, 'error'); }
+   sel.innerHTML = data.data.map(m => `<option value="${m.id}">${m.id}</option>`).join('');
+    sel.value = 'gemini-3.6-flash';
+ } catch(e) { toast(e.message, 'error'); }
 }
 async function sendPlayground() {
   const model = document.getElementById('pgModel').value;

@@ -13,7 +13,7 @@ router = APIRouter()
 
 @router.get("/v1/models")
 async def list_models(request: Request):
-    all_models = sorted(AISTUDIO_MODELS | ANTIGRAVITY_MODELS, reverse=True)
+    all_models = sorted(AISTUDIO_MODELS | ANTIGRAVITY_MODELS)
     data = [
         {"id": m, "object": "model", "created": 0, "owned_by": "google"}
         for m in all_models

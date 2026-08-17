@@ -47,8 +47,6 @@ SUPPORTED_MODELS: set[str] = {
     "gemini-3.5-flash",
     "gemini-3.1-pro-preview",
     "gemini-3.6-flash",
-    "gemini-2.5-pro",
-    "gemini-2.5-flash",
 }
 
 
@@ -217,7 +215,7 @@ class AntigravityAdapter(UpstreamAdapter):
         await self.refresh_credential(cred)
         ag: AntigravityCredential = cred.credential  # type: ignore[attr-defined]
 
-        model = body.get("model", "gemini-3.7-flash")
+        model = body.get("model", "gemini-3.6-flash")
         gemini_req = _openai_to_gemini(body)
 
         payload = {

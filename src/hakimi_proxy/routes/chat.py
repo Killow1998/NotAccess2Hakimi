@@ -43,7 +43,7 @@ def _record_usage(store, cred: PooledCredential, model: str, adapter: UpstreamAd
 @router.post("/v1/chat/completions")
 async def chat_completions(request: Request):
     body = await request.json()
-    model = body.get("model", "gemini-3.7-flash")
+    model = body.get("model", "gemini-3.6-flash")
     stream = body.get("stream", False)
 
     pool: CredentialPool = request.app.state.pool

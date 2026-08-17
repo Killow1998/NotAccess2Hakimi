@@ -29,7 +29,7 @@ def _make_ag_cred() -> PooledCredential:
 def test_aistudio_supports_model():
     adapter = AIStudioAdapter()
     assert adapter.supports_model("gemini-3.7-flash")
-    assert adapter.supports_model("gemini-2.0-flash")
+    assert adapter.supports_model("gemini-3.5-flash")
     assert not adapter.supports_model("gpt-4")
 
 
@@ -79,7 +79,7 @@ def test_aistudio_transform_non_data_line():
 def test_antigravity_supports_model():
     adapter = AntigravityAdapter()
     assert adapter.supports_model("gemini-3.7-flash")
-    assert adapter.supports_model("gemini-2.5-pro")
+    assert adapter.supports_model("gemini-3.6-flash")
     assert not adapter.supports_model("gpt-4")
 
 

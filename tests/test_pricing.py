@@ -53,7 +53,7 @@ def test_get_pricing_strips_prefix():
 
 def test_builtin_pricing_covers_key_models():
     """Ensure key models are in the built-in pricing table."""
-    expected = {"gemini-3.7-flash", "gemini-3.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"}
+    expected = {"gemini-3.7-flash", "gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.1-pro-preview"}
     assert expected.issubset(BUILTIN_PRICING.keys())
 
 
