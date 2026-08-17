@@ -31,6 +31,8 @@ class PooledCredential(Generic[T]):
     last_used: float = 0.0
     cooldown_until: float = 0.0
     failure_count: int = 0
+    last_tested_at: float = 0.0
+    last_test_ok: bool | None = None
 
     @property
     def id(self) -> str:
@@ -135,5 +137,7 @@ class CredentialPool:
                 "cooldown_remaining": round(remaining, 1),
                 "failure_count": pc.failure_count,
                 "last_used": pc.last_used,
+                "last_tested_at": pc.last_tested_at,
+                "last_test_ok": pc.last_test_ok,
             })
         return result

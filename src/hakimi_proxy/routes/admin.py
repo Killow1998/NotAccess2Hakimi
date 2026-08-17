@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 import json
 
@@ -215,6 +216,8 @@ async def list_credentials(request: Request):
             "state": s.get("state", "unknown"),
             "cooldown_remaining": s.get("cooldown_remaining", 0),
             "failure_count": s.get("failure_count", 0),
+            "last_tested_at": s.get("last_tested_at", 0),
+            "last_test_ok": s.get("last_test_ok"),
         })
 
     antigravity = []
@@ -228,6 +231,8 @@ async def list_credentials(request: Request):
             "state": s.get("state", "unknown"),
             "cooldown_remaining": s.get("cooldown_remaining", 0),
             "failure_count": s.get("failure_count", 0),
+            "last_tested_at": s.get("last_tested_at", 0),
+            "last_test_ok": s.get("last_test_ok"),
         })
 
     return {"aistudio": aistudio, "antigravity": antigravity}
@@ -257,7 +262,7 @@ async def test_credential(kind: str, cred_id: str, request: Request):
         return JSONResponse(status_code=400, content={"error": {"message": "Invalid kind"}})
 
     body = {
-        "model": "gemini-3.7-flash",
+        "model": "gemini-3.1-flash-lite-preview",
         "messages": [{"role": "user", "content": "Say hello in one sentence."}],
         "max_tokens": 100,
     }
@@ -278,6 +283,8 @@ async def test_credential(kind: str, cred_id: str, request: Request):
             else:
                 content = raw.get("choices", [{}])[0].get("message", {}).get("content", "")
             usage = adapter.extract_usage(raw)
+            cred.last_tested_at = time.time()
+            cred.last_test_ok = True
             return {"status": "ok", "content": content, "usage": usage}
         else:
             err_msg = f"HTTP {resp.status_code}"
@@ -286,8 +293,12 @@ async def test_credential(kind: str, cred_id: str, request: Request):
                 err_msg += f": {json.dumps(err_body)[:300]}"
             except Exception:
                 err_msg += f": {resp.text[:300]}"
+            cred.last_tested_at = time.time()
+            cred.last_test_ok = False
             return {"status": "error", "message": err_msg}
     except Exception as e:
+        cred.last_tested_at = time.time()
+        cred.last_test_ok = False
         return {"status": "error", "message": str(e)}
     finally:
         await client.aclose()
