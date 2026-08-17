@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import logging
 
+import json
+
+import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -228,6 +231,66 @@ async def list_credentials(request: Request):
         })
 
     return {"aistudio": aistudio, "antigravity": antigravity}
+
+
+# --- Credential test ---
+
+@router.post("/credentials/{kind}/{cred_id}/test")
+async def test_credential(kind: str, cred_id: str, request: Request):
+    """Test a specific credential with a simple chat request (bypasses pool)."""
+    pool = request.app.state.pool
+    config = request.app.state.config
+
+    cred = None
+    for c in pool.all_credentials:
+        if c.id == cred_id:
+            cred = c
+            break
+    if cred is None:
+        return JSONResponse(status_code=404, content={"error": {"message": "Credential not found"}})
+
+    if kind == "aistudio":
+        adapter = request.app.state.aistudio
+    elif kind == "antigravity":
+        adapter = request.app.state.antigravity
+    else:
+        return JSONResponse(status_code=400, content={"error": {"message": "Invalid kind"}})
+
+    body = {
+        "model": "gemini-3.7-flash",
+        "messages": [{"role": "user", "content": "Say hello in one sentence."}],
+        "max_tokens": 100,
+    }
+
+    proxy_url = config.proxy or None
+    client = httpx.AsyncClient(proxy=proxy_url) if proxy_url else httpx.AsyncClient()
+    try:
+        resp = await adapter.forward(body, cred, False, client)
+        if resp.status_code == 200:
+            raw = resp.json()
+            if adapter.kind == "antigravity":
+                inner = raw.get("response", raw)
+                candidates = inner.get("candidates", [])
+                content = ""
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    content = "".join(p.get("text", "") for p in parts if "text" in p)
+            else:
+                content = raw.get("choices", [{}])[0].get("message", {}).get("content", "")
+            usage = adapter.extract_usage(raw)
+            return {"status": "ok", "content": content, "usage": usage}
+        else:
+            err_msg = f"HTTP {resp.status_code}"
+            try:
+                err_body = resp.json()
+                err_msg += f": {json.dumps(err_body)[:300]}"
+            except Exception:
+                err_msg += f": {resp.text[:300]}"
+            return {"status": "error", "message": err_msg}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    finally:
+        await client.aclose()
 
 
 # --- Usage summary for dashboard ---

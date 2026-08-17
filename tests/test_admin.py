@@ -3,6 +3,10 @@
 import tempfile
 from pathlib import Path
 
+import os
+# Redirect config writes to a temp file so tests don't corrupt config.yaml
+os.environ["HAKIMI_CONFIG"] = str(Path(tempfile.gettempdir()) / "hakimi_test_config.yaml")
+
 from fastapi.testclient import TestClient
 
 from hakimi_proxy.auth import BearerAuthMiddleware
