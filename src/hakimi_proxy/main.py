@@ -99,6 +99,7 @@ def main():
         host=config.host,
         port=config.port,
         log_level="info",
+        reload=True,
     )
 
 

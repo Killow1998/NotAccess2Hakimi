@@ -42,7 +42,7 @@ class AntigravityCredIn(BaseModel):
 
 class SettingsIn(BaseModel):
     host: str = "127.0.0.1"
-    port: int = 8000
+    port: int = 12345
     auth_token: str = ""
     max_retries: int = 3
     cooldown_seconds: int = 60

@@ -32,10 +32,10 @@ uv sync --extra dev
 
 
 # 3. Run
-uv run uvicorn hakimi_proxy.main:app --host 127.0.0.1 --port 8000
+uv run python -m hakimi_proxy.main
 ```
 
-Then open `http://127.0.0.1:8000` in your browser to configure credentials and
+Then open `http://127.0.0.1:12345` in your browser to configure credentials and
 settings via the Web UI. No YAML editing required.
 
 ## Client Configuration
@@ -43,7 +43,7 @@ settings via the Web UI. No YAML editing required.
 Point any OpenAI-compatible client at the proxy:
 
 ```bash
-export OPENAI_BASE_URL=http://127.0.0.1:8000/v1
+export OPENAI_BASE_URL=http://127.0.0.1:12345/v1
 export OPENAI_API_KEY=your-proxy-bearer-token
 export CODEX_MODEL=gemini-3.7-flash
 ```
@@ -118,7 +118,7 @@ Cost is computed per-request using a five-dimensional token breakdown
 
 ```bash
 uv run pytest -v          # run tests
-uv run uvicorn hakimi_proxy.main:app --reload  # dev server
+uv run python -m hakimi_proxy.main  # dev server (auto-reload enabled)
 ```
 
 ## Project Structure

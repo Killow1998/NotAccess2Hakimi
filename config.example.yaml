@@ -2,7 +2,7 @@
 # Copy to config.yaml and fill in your credentials.
 
 host: 127.0.0.1
-port: 8000
+port: 12345
 auth_token: "your-secret-bearer-token"
 max_retries: 3
 cooldown_seconds: 60
