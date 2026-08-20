@@ -21,7 +21,7 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
         if not self._auth_token:
             return await call_next(request)
 
-        path = request.url.path.rstrip("/")
+        path = request.url.path.rstrip("/") or "/"
         # UI pages and health checks are always public
         if path in PUBLIC_PATHS or path in UI_PATHS:
             return await call_next(request)

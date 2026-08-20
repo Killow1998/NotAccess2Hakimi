@@ -1,9 +1,12 @@
 """Tests for the credential pool state machine and LRU scheduling."""
 
+import asyncio
 import time
 
+import pytest
+
 from hakimi_proxy.config import AIStudioCredential, AntigravityCredential
-from hakimi_proxy.pool import CredentialPool, CredentialState
+from hakimi_proxy.pool import CredentialPool, CredentialState, CredentialUnavailable
 
 
 def _make_ai(id: str) -> AIStudioCredential:
@@ -147,3 +150,65 @@ def test_active_count():
 
     assert pool.get_active_count(kind="aistudio") == 1
     assert pool.get_active_count(kind="antigravity") == 0
+
+
+@pytest.mark.asyncio
+async def test_single_flight_lease_waits_then_releases():
+    pool = CredentialPool()
+    pool.add_aistudio(_make_ai("only"))
+
+    first = await pool.acquire(kind="aistudio")
+    pending = asyncio.create_task(pool.acquire(kind="aistudio", timeout_seconds=0.2))
+    await asyncio.sleep(0.01)
+    assert not pending.done()
+
+    await pool.release(first)
+    second = await pending
+    assert second.id == "only"
+    assert second.in_flight == 1
+    await pool.release(second)
+
+
+@pytest.mark.asyncio
+async def test_busy_lease_times_out_without_leaking():
+    pool = CredentialPool()
+    pool.add_aistudio(_make_ai("only"))
+    first = await pool.acquire(kind="aistudio")
+
+    with pytest.raises(CredentialUnavailable) as exc_info:
+        await pool.acquire(kind="aistudio", timeout_seconds=0.01)
+
+    assert exc_info.value.reason == "busy_timeout"
+    assert first.in_flight == 1
+    await pool.release(first)
+    assert first.in_flight == 0
+
+
+@pytest.mark.asyncio
+async def test_concurrent_leases_use_different_credentials():
+    pool = CredentialPool()
+    pool.add_aistudio(_make_ai("a"))
+    pool.add_aistudio(_make_ai("b"))
+
+    first, second = await asyncio.gather(
+        pool.acquire(kind="aistudio"),
+        pool.acquire(kind="aistudio"),
+    )
+    assert {first.id, second.id} == {"a", "b"}
+    await pool.release(first)
+    await pool.release(second)
+
+
+@pytest.mark.asyncio
+async def test_status_exposes_runtime_health_fields():
+    pool = CredentialPool()
+    pool.add_aistudio(_make_ai("only"))
+    lease = await pool.acquire(kind="aistudio")
+    pool.mark_success(lease, latency_ms=12, model="gemini-3.7-flash")
+    await pool.release(lease)
+
+    status = pool.get_status()[0]
+    assert status["in_flight"] == 0
+    assert status["last_success_at"] is not None
+    assert status["last_latency_ms"] == 12
+    assert status["last_model"] == "gemini-3.7-flash"

@@ -57,6 +57,7 @@ class AIStudioAdapter(UpstreamAdapter):
     ) -> httpx.Response:
         api_key = cred.credential.api_key  # type: ignore[attr-defined]
         url = f"{BASE_URL}/chat/completions"
+        body = {**body, "model": body.get("model", "").split("/")[-1]}
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -64,15 +65,17 @@ class AIStudioAdapter(UpstreamAdapter):
 
         # Ensure we get usage in streaming mode
         if stream:
-            body.setdefault("stream_options", {})
+            body["stream_options"] = dict(body.get("stream_options", {}))
             body["stream_options"].setdefault("include_usage", True)
 
-        return await client.post(
+        request = client.build_request(
+            "POST",
             url,
             json=body,
             headers=headers,
             timeout=httpx.Timeout(120.0, connect=30.0),
         )
+        return await client.send(request, stream=stream)
 
     def extract_usage(self, response_body: dict) -> dict:
         return response_body.get("usage", {})
@@ -83,8 +86,6 @@ class AIStudioAdapter(UpstreamAdapter):
             return None, None
         data_str = raw_line[5:].strip()
         if not data_str or data_str == "[DONE]":
-            if data_str == "[DONE]":
-                return raw_line, None
             return None, None
         try:
             chunk = json.loads(data_str)
@@ -93,4 +94,4 @@ class AIStudioAdapter(UpstreamAdapter):
 
         # Capture usage if present (typically in the final chunk)
         usage = chunk.get("usage")
-        return raw_line, usage
+        return data_str, usage

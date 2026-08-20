@@ -1,504 +1,525 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>hakimi-proxy</title>
 <style>
 :root {
-  --bg: #0f1115;
-  --surface: #181b21;
-  --surface2: #1e2229;
-  --border: #2a2f38;
-  --text: #d4d8de;
-  --text-dim: #7a808c;
-  --accent: #4f9cf9;
-  --accent-dim: #2a5a9e;
-  --green: #3fb950;
-  --yellow: #d29922;
-  --red: #f85149;
-  --radius: 6px;
-  --font: -apple-system, "Segoe UI", system-ui, sans-serif;
-  --mono: "SF Mono", "Cascadia Code", "Consolas", monospace;
+  --bg: #0d1117; --surface: #161b22; --surface-2: #1c2330; --border: #30363d;
+  --text: #e6edf3; --muted: #8b949e; --blue: #58a6ff; --blue-bg: #1f3b5b;
+  --green: #3fb950; --yellow: #d29922; --red: #f85149; --radius: 8px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: var(--font); background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
-a { color: var(--accent); text-decoration: none; }
-button { font-family: var(--font); cursor: pointer; border: none; border-radius: var(--radius); padding: 7px 14px; font-size: 13px; transition: opacity .15s; }
-button:hover { opacity: 0.85; }
-input, select { font-family: var(--font); font-size: 13px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 7px 10px; width: 100%; }
-input:focus { outline: none; border-color: var(--accent); }
-label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; font-weight: 500; }
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-danger { background: var(--red); color: #fff; }
-.btn-ghost { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
-.btn-ghost:hover { background: var(--surface2); }
-
-/* Layout */
-.app { display: flex; min-height: 100vh; }
-.sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
-.sidebar-brand { padding: 16px 18px; font-weight: 700; font-size: 15px; letter-spacing: -0.3px; border-bottom: 1px solid var(--border); }
-.sidebar-brand span { color: var(--accent); }
-.sidebar-nav { flex: 1; padding: 8px; display: flex; flex-direction: column; gap: 2px; }
-.nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--radius); color: var(--text-dim); font-size: 13px; cursor: pointer; transition: all .15s; }
-.nav-item:hover { background: var(--surface2); color: var(--text); }
-.nav-item.active { background: var(--accent-dim); color: #fff; }
-.nav-icon { width: 16px; height: 16px; flex-shrink: 0; }
-.sidebar-footer { padding: 12px 18px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-dim); }
-.main { flex: 1; padding: 24px 28px; max-width: 960px; overflow-x: hidden; }
-
-/* Login */
-.login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-.login-box { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 32px; width: 360px; }
-.login-box h2 { font-size: 18px; margin-bottom: 4px; }
-.login-box p { font-size: 13px; color: var(--text-dim); margin-bottom: 20px; }
-.login-box input { margin-bottom: 12px; }
-
-/* Sections */
-.section { display: none; }
-.section.active { display: block; }
-.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
-.section-header h1 { font-size: 20px; font-weight: 600; }
-.section-header p { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
-
-/* Cards */
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
-.card-row { display: flex; align-items: center; justify-content: space-between; }
-.card-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
-.card-meta { font-size: 12px; color: var(--text-dim); font-family: var(--mono); }
-
-/* Stats grid */
-.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
-.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
-.stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-.stat-value { font-size: 22px; font-weight: 700; }
-.stat-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
-
-/* Badge */
-.badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
-.badge-active { background: rgba(63,185,80,0.15); color: var(--green); }
-.badge-cooldown { background: rgba(210,153,34,0.15); color: var(--yellow); }
-.badge-disabled { background: rgba(248,81,73,0.15); color: var(--red); }
-.badge-dot { width: 6px; height: 6px; border-radius: 50%; }
-
-/* Tables */
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; }
-td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
-tr:last-child td { border-bottom: none; }
-
-/* Forms */
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.form-grid .full { grid-column: 1 / -1; }
-.form-group { margin-bottom: 12px; }
-.form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
-
-/* Modal */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 100; }
-.modal-overlay.show { display: flex; }
-.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 24px; width: 480px; max-width: 90vw; max-height: 85vh; overflow-y: auto; }
-.modal h3 { font-size: 16px; margin-bottom: 16px; }
-
-/* Tabs */
-.tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
-.tab { padding: 8px 16px; font-size: 13px; color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent; transition: all .15s; }
-.tab:hover { color: var(--text); }
-.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-
-/* Toast */
-.toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: var(--radius); font-size: 13px; z-index: 200; opacity: 0; transform: translateY(10px); transition: all .2s; pointer-events: none; }
-.toast.show { opacity: 1; transform: translateY(0); }
-.toast-success { background: var(--green); color: #fff; }
-.toast-error { background: var(--red); color: #fff; }
-
-/* Empty state */
-.empty { text-align: center; padding: 40px; color: var(--text-dim); font-size: 13px; }
-.empty p { margin-top: 8px; }
-
-/* Hidden */
+* { box-sizing: border-box; }
+body { margin: 0; overflow-x: hidden; background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
+button, input, select { font: inherit; }
+button { cursor: pointer; border: 0; border-radius: 6px; padding: 8px 13px; transition: opacity .15s, border-color .15s; }
+button:hover:not(:disabled) { opacity: .85; }
+button:disabled { cursor: wait; opacity: .55; }
+input, textarea { width: 100%; padding: 8px 10px; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; }
+textarea { min-height: 74px; resize: vertical; font: 12px/1.45 var(--mono); overflow-wrap: anywhere; }
+input:focus, textarea:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
+label { display: block; margin: 0 0 5px; color: var(--muted); font-size: 12px; font-weight: 600; }
+a { color: var(--blue); }
 .hidden { display: none !important; }
+.btn-primary { color: #fff; background: #238636; }
+.btn-blue { color: #fff; background: #1f6feb; }
+.btn-ghost { color: var(--text); background: transparent; border: 1px solid var(--border); }
+.btn-danger { color: #fff; background: var(--red); }
+.login-wrap { display: grid; min-height: 100vh; place-items: center; padding: 20px; }
+.login-box { width: min(380px, 100%); padding: 30px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.login-box h1 { margin: 0 0 5px; font-size: 22px; }
+.login-box p { margin: 0 0 20px; color: var(--muted); }
+.login-box input { margin-bottom: 12px; }
+.app { width: min(1180px, 100%); margin: 0 auto; padding: 30px 24px 52px; }
+.topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+.eyebrow { margin: 0 0 3px; color: var(--blue); font: 700 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+.topbar h1 { margin: 0; font-size: clamp(22px, 4vw, 30px); letter-spacing: -.02em; }
+.subtitle { margin: 6px 0 0; color: var(--muted); }
+.top-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.service { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 99px; font-size: 12px; }
+.service-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--yellow); }
+.service.online .service-dot { background: var(--green); }
+.service.offline .service-dot { background: var(--red); }
+.endpoint { margin: 14px 0 0; color: var(--muted); font: 12px var(--mono); overflow-wrap: anywhere; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0; }
+.stat, .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.stat { padding: 15px 16px; }
+.stat-label { margin-bottom: 5px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.stat-value { font-size: 23px; font-weight: 700; }
+.stat-sub { color: var(--muted); font-size: 11px; }
+.panel { margin-top: 16px; padding: 20px; }
+.panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
+.panel-header h2 { margin: 0; font-size: 17px; }
+.panel-header p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.provider-block + .provider-block { margin-top: 23px; padding-top: 22px; border-top: 1px solid var(--border); }
+.provider-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.provider-heading h3 { margin: 0; font-size: 14px; }
+.provider-heading span { color: var(--muted); font-size: 12px; }
+.credential-list { display: grid; gap: 9px; }
+.credential-card { padding: 13px 14px; border: 1px solid var(--border); border-radius: 7px; background: rgba(255,255,255,.015); }
+.credential-main { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.credential-name { margin-bottom: 4px; font-weight: 650; }
+.credential-meta { display: flex; gap: 8px; flex-wrap: wrap; color: var(--muted); font: 12px var(--mono); overflow-wrap: anywhere; }
+.credential-meta span + span::before { content: "·"; margin-right: 8px; color: var(--border); }
+.credential-runtime { margin-top: 9px; color: var(--muted); font-size: 11px; }
+.credential-runtime .runtime-error { color: #ffb4ae; }
+.credential-actions { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+.credential-actions button { padding: 6px 10px; font-size: 12px; }
+.badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 99px; font-size: 11px; font-weight: 650; }
+.badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.badge-active { color: var(--green); background: rgba(63,185,80,.12); }
+.badge-cooldown { color: var(--yellow); background: rgba(210,153,34,.12); }
+.badge-disabled { color: var(--red); background: rgba(248,81,73,.12); }
+.badge-unknown { color: var(--muted); background: rgba(139,148,158,.12); }
+.test-result { margin-top: 10px; padding: 8px 10px; border-radius: 6px; font-size: 12px; }
+.test-result.ok { color: #aff5b4; background: rgba(63,185,80,.12); }
+.test-result.error { color: #ffb4ae; background: rgba(248,81,73,.12); }
+.empty { padding: 25px 10px; color: var(--muted); text-align: center; }
+.empty p { margin: 5px 0 0; font-size: 12px; }
+details summary { cursor: pointer; color: var(--text); font-weight: 650; }
+details summary::marker { color: var(--blue); }
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; margin-top: 17px; }
+.form-group.full { grid-column: 1 / -1; }
+.form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 17px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { padding: 8px 10px; color: var(--muted); border-bottom: 1px solid var(--border); text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+td { padding: 10px; border-bottom: 1px solid var(--border); }
+tr:last-child td { border-bottom: 0; }
+.table-wrap { overflow-x: auto; }
+.modal-overlay { position: fixed; inset: 0; display: none; place-items: center; padding: 20px; background: rgba(0,0,0,.7); z-index: 10; }
+.modal-overlay.show { display: grid; }
+.modal { width: min(520px, 100%); max-height: 90vh; overflow-y: auto; padding: 22px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 20px 70px rgba(0,0,0,.4); }
+.modal h2 { margin: 0 0 5px; font-size: 18px; }
+.modal-note { margin: 0 0 18px; color: var(--muted); font-size: 12px; }
+.modal .form-group { margin-top: 13px; }
+.modal .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+.secret-note { margin-top: 5px; color: var(--muted); font-size: 11px; }
+.modal-status { min-height: 20px; margin-top: 12px; color: var(--red); font-size: 12px; }
+.checkbox { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 13px; }
+.checkbox input { width: auto; }
+.toast { position: fixed; right: 20px; bottom: 20px; max-width: min(420px, calc(100vw - 40px)); padding: 10px 14px; color: #fff; border-radius: 6px; opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity .15s, transform .15s; z-index: 20; }
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.success { background: #238636; }
+.toast.error { background: var(--red); }
+@media (max-width: 760px) {
+  .app { padding: 20px 13px 40px; }
+  .topbar, .panel-header, .credential-main { display: block; }
+  .top-actions, .actions { justify-content: flex-start; margin-top: 13px; }
+  .stats { grid-template-columns: 1fr 1fr; }
+  .credential-actions { margin-top: 12px; justify-content: flex-start; flex-wrap: wrap; }
+  .settings-grid, .modal .form-grid { grid-template-columns: 1fr; }
+  .form-group.full { grid-column: auto; }
+  .panel { padding: 15px; }
+  th, td { padding: 8px 6px; }
+}
+@media (max-width: 430px) { .stats { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
-
-<!-- Login -->
 <div id="loginView" class="login-wrap hidden">
-<div class="login-box">
-<h2>hakimi-proxy</h2>
-<p>Enter your bearer token to access the dashboard.</p>
-<input type="password" id="loginToken" placeholder="Bearer token" onkeydown="if(event.key==='Enter')doLogin()">
-<button class="btn-primary" style="width:100%" onclick="doLogin()">Login</button>
-</div>
+  <form class="login-box" onsubmit="doLogin(event)">
+    <h1>hakimi-proxy</h1>
+    <p>输入 Bearer token 进入本地控制台。</p>
+    <input id="loginToken" type="password" autocomplete="current-password" placeholder="Bearer token">
+    <button class="btn-blue" type="submit" style="width:100%">登录</button>
+  </form>
 </div>
 
-<!-- App -->
 <div id="appView" class="app hidden">
-<!-- Sidebar -->
-<div class="sidebar">
-<div class="sidebar-brand">hakimi<span>-proxy</span></div>
-<div class="sidebar-nav">
-<div class="nav-item active" data-nav="dashboard" onclick="nav('dashboard')">
-<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-Dashboard
-</div>
-<div class="nav-item" data-nav="credentials" onclick="nav('credentials')">
-<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-Credentials
-</div>
-<div class="nav-item" data-nav="usage" onclick="nav('usage')">
-<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg>
-Usage
-</div>
-<div class="nav-item" data-nav="settings" onclick="nav('settings')">
-<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-Settings
-</div>
-</div>
-<div class="sidebar-footer" id="sidebarFooter"></div>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">HAKIMI PROXY</p>
+      <h1>控制台</h1>
+      <p class="subtitle">管理凭证池、检查连接，并查看代理用量。</p>
+      <p class="endpoint" id="endpoint">Endpoint: —</p>
+    </div>
+    <div class="top-actions">
+      <span class="service" id="serviceStatus"><span class="service-dot"></span><span>检查中</span></span>
+      <button class="btn-ghost" onclick="refreshAll()">刷新</button>
+    </div>
+  </header>
+
+  <div class="stats" id="stats"></div>
+
+  <section class="panel" id="credentials">
+    <div class="panel-header">
+      <div><h2>凭证</h2><p>编辑时密钥不会回显；密钥输入框留空即可保持当前值。</p></div>
+      <div class="actions">
+        <button class="btn-primary" onclick="openCredentialModal('aistudio')">+ AI Studio</button>
+        <button class="btn-blue" onclick="startAntigravityOAuth()">+ Antigravity 登录</button>
+        <button class="btn-ghost" onclick="openCredentialModal('antigravity')">手动配置</button>
+      </div>
+    </div>
+    <div class="provider-block">
+      <div class="provider-heading"><h3>AI Studio</h3><span id="aiCount">0 个凭证</span></div>
+      <div class="credential-list" id="aiCredentials"></div>
+    </div>
+    <div class="provider-block">
+      <div class="provider-heading"><h3>Antigravity</h3><span id="agCount">0 个账号</span></div>
+      <div class="credential-list" id="agCredentials"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="usage">
+    <div class="panel-header"><div><h2>用量</h2><p>按凭证和模型查看本地计量结果。</p></div><button class="btn-ghost" onclick="loadUsage()">刷新用量</button></div>
+    <div id="usageStats" class="stats"></div>
+    <div class="table-wrap" id="usageTable"></div>
+  </section>
+
+  <section class="panel" id="settings">
+    <details id="settingsDetails">
+      <summary>设置（部分变更需要重启）</summary>
+      <div class="settings-grid">
+        <div class="form-group"><label for="setHost">Host</label><input id="setHost"></div>
+        <div class="form-group"><label for="setPort">Port</label><input id="setPort" type="number"></div>
+        <div class="form-group full"><label for="setAuth">Bearer token</label><input id="setAuth" type="password" autocomplete="off"></div>
+        <div class="form-group"><label for="setRetries">Max retries</label><input id="setRetries" type="number"></div>
+        <div class="form-group"><label for="setCooldown">Cooldown seconds</label><input id="setCooldown" type="number"></div>
+        <div class="form-group full"><label for="setDb">Database path</label><input id="setDb"></div>
+        <div class="form-group full"><label for="setProxy">Upstream proxy</label><input id="setProxy" placeholder="留空：自动检测环境/系统/GNOME 代理"></div>
+        <div class="form-group full"><label for="setProxySource">Proxy source</label><input id="setProxySource" readonly></div>
+        <div class="form-group full"><label for="setConfigFile">Config file</label><input id="setConfigFile" readonly></div>
+      </div>
+      <div class="form-actions"><button class="btn-primary" onclick="saveSettings()">保存设置</button></div>
+    </details>
+  </section>
 </div>
 
-<!-- Main -->
-<div class="main">
-
-<!-- Dashboard -->
-<div class="section active" id="sec-dashboard">
-<div class="section-header">
-<div><h1>Dashboard</h1><p>Proxy status and overview</p></div>
+<div class="modal-overlay" id="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal" id="modalContent"></div>
 </div>
-<div class="stats-grid" id="statsGrid"></div>
-<div class="card">
-<div class="card-title">Credential Pool Status</div>
-<div id="poolStatus" style="margin-top:12px"></div>
-</div>
-</div>
-
-<!-- Credentials -->
-<div class="section" id="sec-credentials">
-<div class="section-header">
-<div><h1>Credentials</h1><p>Manage AI Studio and Antigravity accounts</p></div>
-</div>
-<div class="tabs">
-<div class="tab active" data-ctab="aistudio" onclick="ctab('aistudio')">AI Studio</div>
-<div class="tab" data-ctab="antigravity" onclick="ctab('antigravity')">Antigravity</div>
-</div>
-<div id="cred-aistudio">
-<div style="margin-bottom:12px"><button class="btn-primary" onclick="openModal('aistudio')">+ Add AI Studio Key</button></div>
-<div id="aiCredList"></div>
-</div>
-<div id="cred-antigravity" class="hidden">
-<div style="margin-bottom:12px"><button class="btn-primary" onclick="openModal('antigravity')">+ Add Antigravity Account</button></div>
-<div id="agCredList"></div>
-</div>
-</div>
-
-<!-- Usage -->
-<div class="section" id="sec-usage">
-<div class="section-header">
-<div><h1>Usage & Cost</h1><p>Traffic metering across all credentials</p></div>
-<button class="btn-ghost" onclick="loadUsage()">Refresh</button>
-</div>
-<div class="stats-grid" id="usageStats"></div>
-<div class="card" style="margin-top:8px">
-<div class="card-title">By Credential</div>
-<div id="usageByCred" style="margin-top:12px"></div>
-</div>
-<div class="card">
-<div class="card-title">By Model</div>
-<div id="usageByModel" style="margin-top:12px"></div>
-</div>
-</div>
-
-<!-- Settings -->
-<div class="section" id="sec-settings">
-<div class="section-header">
-<div><h1>Settings</h1><p>Proxy configuration (some changes require restart)</p></div>
-</div>
-<div class="card">
-<div class="form-grid">
-<div class="form-group"><label>Host</label><input id="setHost" placeholder="127.0.0.1"></div>
-<div class="form-group"><label>Port</label><input id="setPort" type="number" placeholder="8000"></div>
-<div class="form-group full"><label>Auth Token (Bearer)</label><input id="setAuth" placeholder="Leave empty for no auth"></div>
-<div class="form-group"><label>Max Retries</label><input id="setRetries" type="number" value="3"></div>
-<div class="form-group"><label>Cooldown (seconds)</label><input id="setCooldown" type="number" value="60"></div>
-<div class="form-group full"><label>Database Path</label><input id="setDb" placeholder="hakimi.db"></div>
-<div class="form-group full"><label>Upstream Proxy</label><input id="setProxy" placeholder="socks5://127.0.0.1:1080 (leave empty for direct)"></div>
-<div class="form-group full"><label>Config File</label><input id="setConfigFile" readonly style="opacity:0.6"></div>
-</div>
-<div class="form-actions">
-<button class="btn-primary" onclick="saveSettings()">Save Settings</button>
-</div>
-</div>
-</div>
-
-</div>
-</div>
-
-<!-- Modal -->
-<div class="modal-overlay" id="modalOverlay">
-<div class="modal" id="modalContent"></div>
-</div>
-
-<!-- Toast -->
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status"></div>
 
 <script>
+const state = { credentials: { aistudio: [], antigravity: [] }, usage: null, health: null, busy: new Set(), tests: {} };
 let token = localStorage.getItem('hakimi_token') || '';
 let editingType = '';
-let editingId = null;
+let editingId = '';
+let oauthSession = null;
 
-// --- API ---
 async function api(method, path, body) {
-  const opts = { method, headers: {} };
-  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
-  if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
-  const resp = await fetch(path, opts);
-  if (resp.status === 401) { showLogin(); throw new Error('Unauthorized'); }
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data.error?.message || 'Request failed');
+  const options = { method, headers: {} };
+  if (token) options.headers.Authorization = 'Bearer ' + token;
+  if (body !== undefined) {
+    options.headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(body);
+  }
+  const response = await fetch(path, options);
+  if (response.status === 401) { showLogin(); throw new Error('Unauthorized'); }
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error?.message || 'Request failed');
   return data;
 }
 
-// --- Auth ---
 function showLogin() {
   document.getElementById('loginView').classList.remove('hidden');
   document.getElementById('appView').classList.add('hidden');
 }
-function doLogin() {
+function doLogin(event) {
+  event?.preventDefault();
   token = document.getElementById('loginToken').value.trim();
   localStorage.setItem('hakimi_token', token);
   init();
 }
-
-// --- Navigation ---
-function nav(section) {
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.querySelector(`[data-nav="${section}"]`).classList.add('active');
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.getElementById('sec-' + section).classList.add('active');
-  if (section === 'dashboard') loadDashboard();
-  if (section === 'credentials') loadCredentials();
-  if (section === 'usage') loadUsage();
-  if (section === 'settings') loadSettings();
-}
-function ctab(tab) {
-  document.querySelectorAll('[data-ctab]').forEach(t => t.classList.remove('active'));
-  document.querySelector(`[data-ctab="${tab}"]`).classList.add('active');
-  document.getElementById('cred-aistudio').classList.toggle('hidden', tab !== 'aistudio');
-  document.getElementById('cred-antigravity').classList.toggle('hidden', tab !== 'antigravity');
+function setAppVisible() {
+  document.getElementById('loginView').classList.add('hidden');
+  document.getElementById('appView').classList.remove('hidden');
 }
 
-// --- Dashboard ---
-async function loadDashboard() {
-  try {
-    const [health, summary] = await Promise.all([
-      api('GET', '/healthz'),
-      api('GET', '/api/usage/summary'),
-    ]);
-    document.getElementById('statsGrid').innerHTML = `
-      <div class="stat-card"><div class="stat-label">Active Credentials</div><div class="stat-value">${health.active_credentials}<span style="font-size:14px;color:var(--text-dim)">/${health.total_credentials}</span></div></div>
-      <div class="stat-card"><div class="stat-label">Total Requests</div><div class="stat-value">${summary.total_requests}</div></div>
-      <div class="stat-card"><div class="stat-label">Total Tokens</div><div class="stat-value">${formatNum(summary.total_input_tokens + summary.total_output_tokens)}</div><div class="stat-sub">${formatNum(summary.total_input_tokens)} in / ${formatNum(summary.total_output_tokens)} out</div></div>
-      <div class="stat-card"><div class="stat-label">Est. Cost (USD)</div><div class="stat-value">$${summary.total_cost_usd.toFixed(4)}</div></div>
-    `;
-    const creds = await api('GET', '/api/credentials');
-    const all = [...creds.aistudio, ...creds.antigravity];
-    if (all.length === 0) {
-      document.getElementById('poolStatus').innerHTML = '<div class="empty">No credentials configured. <a href="#" onclick="nav(\'credentials\');return false">Add one</a></div>';
-    } else {
-      document.getElementById('poolStatus').innerHTML = '<table><thead><tr><th>ID</th><th>Type</th><th>State</th><th>Failures</th><th>Cooldown</th></tr></thead><tbody>' +
-        all.map(c => `<tr><td style="font-family:var(--mono);font-size:12px">${esc(c.id)}</td><td>${c.kind}</td><td>${stateBadge(c.state)}</td><td>${c.failure_count||0}</td><td>${c.cooldown_remaining ? Math.ceil(c.cooldown_remaining)+'s' : '-'}</td></tr>`).join('') +
-        '</tbody></table>';
-    }
-  } catch(e) { toast(e.message, 'error'); }
-}
-
-// --- Credentials ---
-async function loadCredentials() {
-  try {
-    const data = await api('GET', '/api/credentials');
-    renderAiCreds(data.aistudio);
-    renderAgCreds(data.antigravity);
-  } catch(e) { toast(e.message, 'error'); }
-}
-function renderAiCreds(creds) {
-  if (!creds.length) { document.getElementById('aiCredList').innerHTML = '<div class="empty">No AI Studio keys yet.<p>Add one with your Google AI Studio API key.</p></div>'; return; }
-  document.getElementById('aiCredList').innerHTML = creds.map(c => `
-    <div class="card">
-      <div class="card-row">
-        <div><div class="card-title">${esc(c.id)}</div><div class="card-meta">${esc(c.api_key)} ${c.account ? ' &middot; ' + esc(c.account) : ''} ${c.project ? ' &middot; ' + esc(c.project) : ''}</div></div>
-        <div style="display:flex;align-items:center;gap:8px">${stateBadge(c.state)}<button class="btn-ghost" onclick="openModal('aistudio','${esc(c.id)}')">Edit</button><button class="btn-danger" onclick="delCred('aistudio','${esc(c.id)}')">Delete</button></div>
-      </div>
-    </div>`).join('');
-}
-function renderAgCreds(creds) {
-  if (!creds.length) { document.getElementById('agCredList').innerHTML = '<div class="empty">No Antigravity accounts yet.<p>Add one with your OAuth credentials.</p></div>'; return; }
-  document.getElementById('agCredList').innerHTML = creds.map(c => `
-    <div class="card">
-      <div class="card-row">
-        <div><div class="card-title">${esc(c.id)}</div><div class="card-meta">${esc(c.refresh_token)}</div></div>
-        <div style="display:flex;align-items:center;gap:8px">${stateBadge(c.state)}<button class="btn-ghost" onclick="openModal('antigravity','${esc(c.id)}')">Edit</button><button class="btn-danger" onclick="delCred('aistudio','${esc(c.id)}')" style="visibility:hidden">-</button><button class="btn-danger" onclick="delCred('antigravity','${esc(c.id)}')">Delete</button></div>
-      </div>
-    </div>`).join('');
-}
-
-function openModal(type, id) {
-  editingType = type;
-  editingId = id;
-  const isEdit = !!id;
-  const m = document.getElementById('modalContent');
-  const overlay = document.getElementById('modalOverlay');
-
-  if (type === 'aistudio') {
-    let cred = { id: '', api_key: '', project: '', account: '' };
-    if (isEdit) {
-      // Fetch fresh data isn't needed; use what's displayed but we need full values
-      // The list endpoint masks keys, so for edit we show placeholders
-    }
-    m.innerHTML = `<h3>${isEdit ? 'Edit' : 'Add'} AI Studio Key</h3>
-      <div class="form-group"><label>ID</label><input id="mId" value="${isEdit ? esc(id) : ''}" ${isEdit ? 'readonly' : ''}></div>
-      <div class="form-group"><label>API Key</label><input id="mApiKey" placeholder="AIzaSy..." style="font-family:var(--mono)"></div>
-      <div class="form-grid">
-        <div class="form-group"><label>Project (optional)</label><input id="mProject"></div>
-        <div class="form-group"><label>Account (optional)</label><input id="mAccount" placeholder="user@gmail.com"></div>
-      </div>
-      <div class="form-actions"><button class="btn-ghost" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="saveCred('aistudio')">${isEdit ? 'Update' : 'Add'}</button></div>`;
-  } else {
-    m.innerHTML = `<h3>${isEdit ? 'Edit' : 'Add'} Antigravity Account</h3>
-      <div class="form-group"><label>ID</label><input id="mId" value="${isEdit ? esc(id) : ''}" ${isEdit ? 'readonly' : ''}></div>
-      <div class="form-group"><label>Client ID</label><input id="mClientId" placeholder="xxx.apps.googleusercontent.com" style="font-family:var(--mono)"></div>
-      <div class="form-group"><label>Client Secret</label><input id="mClientSecret" placeholder="GOCSPX-xxx" style="font-family:var(--mono)"></div>
-      <div class="form-group"><label>Refresh Token</label><input id="mRefreshToken" placeholder="1//xxx" style="font-family:var(--mono)"></div>
-      <div class="form-actions"><button class="btn-ghost" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="saveCred('antigravity')">${isEdit ? 'Update' : 'Add'}</button></div>`;
+async function init() {
+  try { state.health = await api('GET', '/healthz'); setAppVisible(); await refreshAll(); }
+  catch (error) {
+    if (error.message === 'Unauthorized') return;
+    setAppVisible(); toast(error.message, 'error');
   }
-  overlay.classList.add('show');
+}
+async function refreshAll() {
+  try {
+    const [health, credentials, usage] = await Promise.all([
+      api('GET', '/healthz'), api('GET', '/api/credentials'), api('GET', '/api/usage/summary'),
+    ]);
+    state.health = health; state.credentials = credentials; state.usage = usage;
+    renderHealth(); renderCredentials(); renderUsage();
+  document.getElementById('endpoint').textContent = `Endpoint: ${window.location.origin} · AGY model: gemini-3.7-flash-tiered`;
+  } catch (error) { toast(error.message, 'error'); }
+}
+function renderHealth() {
+  const health = state.health || {};
+  const status = document.getElementById('serviceStatus');
+  status.className = 'service online';
+  status.innerHTML = `<span class="service-dot"></span><span>在线 · ${health.active_credentials || 0}/${health.total_credentials || 0} active · proxy ${esc(health.proxy_source || 'unknown')}</span>`;
+  const usage = state.usage || {};
+  document.getElementById('stats').innerHTML = [
+    ['Active credentials', `${health.active_credentials || 0}/${health.total_credentials || 0}`, '当前可调度'],
+    ['Requests', formatNum(usage.total_requests), '全部本地计量'],
+    ['Tokens', formatNum((usage.total_input_tokens || 0) + (usage.total_output_tokens || 0)), `${formatNum(usage.total_input_tokens)} in / ${formatNum(usage.total_output_tokens)} out`],
+    ['Estimated cost', '$' + Number(usage.total_cost_usd || 0).toFixed(4), 'USD'],
+  ].map(item => `<div class="stat"><div class="stat-label">${item[0]}</div><div class="stat-value">${item[1]}</div><div class="stat-sub">${item[2]}</div></div>`).join('');
+}
+
+async function loadCredentials() {
+  state.credentials = await api('GET', '/api/credentials');
+  renderCredentials();
+}
+function renderCredentials() {
+  const ai = state.credentials.aistudio || [];
+  const ag = state.credentials.antigravity || [];
+  document.getElementById('aiCount').textContent = `${ai.length} 个凭证`;
+  document.getElementById('agCount').textContent = `${ag.length} 个账号`;
+  document.getElementById('aiCredentials').innerHTML = renderCredentialList('aistudio', ai);
+  document.getElementById('agCredentials').innerHTML = renderCredentialList('antigravity', ag);
+}
+function renderCredentialList(kind, credentials) {
+  if (!credentials.length) {
+    const label = kind === 'aistudio' ? 'AI Studio API key' : 'Antigravity OAuth 账号';
+    return `<div class="empty">还没有${label}。<p>点击右上角按钮添加。</p></div>`;
+  }
+  return credentials.map(credential => {
+    const key = `${kind}:${credential.id}`;
+    const result = state.tests[key];
+    const tokenExpiry = kind === 'antigravity'
+      ? (credential.access_token_expires_at ? `access token 至 ${new Date(credential.access_token_expires_at * 1000).toLocaleString()}` : 'access token 按需刷新')
+      : '';
+    const detail = kind === 'aistudio'
+      ? [credential.api_key_set ? 'API key 已设置' : 'API key 缺失', credential.account, credential.project]
+      : [credential.account || credential.client_id, credential.client_secret_set ? 'client secret 已设置' : 'client secret 缺失', credential.refresh_token_set ? 'refresh token 已设置' : 'refresh token 缺失', tokenExpiry, credential.project];
+    const runtime = [
+      credential.in_flight ? `${credential.in_flight} 个请求处理中` : '空闲',
+      `健康：${healthLabel(credential.health)}`,
+      credential.cooldown_remaining ? `冷却 ${credential.cooldown_remaining}s` : '',
+      credential.last_latency_ms ? `${credential.last_latency_ms} ms` : '',
+      credential.last_model ? `模型 ${credential.last_model}` : '',
+    ].filter(Boolean).map(esc).join(' · ');
+    const lastError = credential.last_error_type
+      ? `<div class="runtime-error">最近错误：${esc(credential.last_error_type)}${credential.last_error_message ? ` · ${esc(credential.last_error_message)}` : ''}</div>`
+      : '';
+    return `<article class="credential-card">
+      <div class="credential-main">
+        <div><div class="credential-name">${esc(credential.id)}</div><div class="credential-meta">${detail.filter(Boolean).map(esc).map(value => `<span>${value}</span>`).join('')}</div></div>
+        <div class="credential-actions">
+          ${stateBadge(credential.state)}
+          <button class="btn-ghost" ${state.busy.has(key) ? 'disabled' : ''} onclick="testCredential('${kind}','${arg(credential.id)}')">${state.busy.has(key) ? '测试中…' : 'Test'}</button>
+          <button class="btn-ghost" onclick="openCredentialModal('${kind}','${arg(credential.id)}')">Edit</button>
+          <button class="btn-danger" onclick="deleteCredential('${kind}','${arg(credential.id)}')">Delete</button>
+        </div>
+      </div>
+      <div class="credential-runtime">${runtime}${lastError}</div>
+      ${result ? `<div class="test-result ${result.ok ? 'ok' : 'error'}">${esc(result.message)}</div>` : ''}
+    </article>`;
+  }).join('');
+}
+function healthLabel(name) {
+  return { healthy: '正常', degraded: '降级', cooldown: '冷却', reauth_required: '需重新授权', disabled: '已禁用', unknown: '未知' }[name] || name || '未知';
+}
+function stateBadge(stateName) {
+  const map = { active: ['badge-active', '可调度'], cooldown: ['badge-cooldown', '冷却中'], disabled: ['badge-disabled', '已禁用'] };
+  const [className, label] = map[stateName] || ['badge-unknown', stateName || '未知'];
+  return `<span class="badge ${className}">${esc(label)}</span>`;
+}
+
+async function startAntigravityOAuth() {
+  try {
+    const session = await api('POST', '/api/credentials/antigravity/oauth/start');
+    oauthSession = session;
+    openAntigravityOAuthModal(session);
+    const popup = window.open(session.authorization_url, '_blank', 'noopener,noreferrer');
+    if (!popup) oauthStatus('浏览器阻止了新窗口；请点击“打开授权链接”或复制到任意 Chrome。');
+    else oauthStatus('已打开 Google 登录页；完成后可自动回填，也可以粘贴回调 URL。');
+    pollAntigravityOAuth(session);
+  } catch (error) { toast(error.message, 'error'); }
+}
+
+function openAntigravityOAuthModal(session) {
+  document.getElementById('modalContent').innerHTML = `<h2 id="modalTitle">Antigravity 登录</h2>
+    <p class="modal-note">本机登录可直接打开；服务器部署时，把授权链接复制到自己的 Chrome。Google 登录后即使看到 localhost 连接失败，也请复制浏览器地址栏里的完整 URL 粘贴回来。</p>
+    <div class="form-group"><label for="oauthUrl">授权链接</label><textarea id="oauthUrl" readonly>${esc(session.authorization_url)}</textarea><div class="secret-note">回调地址：${esc(session.redirect_uri || 'http://localhost:51121/oauth-callback')}</div></div>
+    <div class="form-actions"><button class="btn-ghost" onclick="copyOAuthUrl()">复制链接</button><button class="btn-ghost" onclick="openOAuthUrl()">打开授权链接</button></div>
+    <div class="form-group"><label for="oauthResult">授权结果（完整回调 URL 或 OAuth code）</label><textarea id="oauthResult" placeholder="${esc(session.redirect_uri || 'http://localhost:51121/oauth-callback')}?code=...&state=..."></textarea></div>
+    <div class="modal-status" id="oauthStatus" role="alert">等待 Google 授权…</div>
+    <div class="form-actions"><button class="btn-ghost" onclick="closeModal()">取消</button><button class="btn-blue" id="oauthComplete" onclick="submitAntigravityOAuth()">完成登录</button></div>`;
+  document.getElementById('modalOverlay').classList.add('show');
+  document.getElementById('oauthResult').focus();
+}
+
+function oauthStatus(message) {
+  const node = document.getElementById('oauthStatus');
+  if (node) node.textContent = message;
+}
+
+async function copyOAuthUrl() {
+  try {
+    await navigator.clipboard.writeText(oauthSession.authorization_url);
+    oauthStatus('授权链接已复制。');
+  } catch (error) { oauthStatus('复制失败，请手动选择并复制授权链接。'); }
+}
+
+function openOAuthUrl() { window.open(oauthSession.authorization_url, '_blank', 'noopener,noreferrer'); }
+
+async function submitAntigravityOAuth() {
+  const result = value('oauthResult');
+  if (!result) { oauthStatus('请粘贴完整回调 URL 或 OAuth code。'); return; }
+  const button = document.getElementById('oauthComplete');
+  button.disabled = true;
+  oauthStatus('正在交换 OAuth token…');
+  try {
+    const payload = result.startsWith('http://') || result.startsWith('https://')
+      ? { state: oauthSession.state, callback_url: result }
+      : { state: oauthSession.state, code: result };
+    const response = await api('POST', '/api/credentials/antigravity/oauth/complete', payload);
+    if (response.status === 'ok') {
+      oauthSession.completed = true;
+      closeModal();
+      toast(`Antigravity 登录成功 · ${response.account || response.credential_id}`, 'success');
+      await loadCredentials();
+    } else if (response.status === 'error') { oauthSession.completed = true; oauthStatus(response.message || 'OAuth 登录失败。'); }
+    else oauthStatus('服务器仍在处理，请稍候。');
+  } catch (error) { oauthStatus(error.message); }
+  finally { button.disabled = false; }
+}
+
+async function pollAntigravityOAuth(session) {
+    const pollIntervalMs = 3000;
+    const maxAttempts = Math.ceil(((session.expires_in || 300) * 1000) / pollIntervalMs);
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (session.completed) return;
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+      if (session.completed) return;
+      try {
+        const result = await api('GET', `/api/credentials/antigravity/oauth/status/${encodeURIComponent(session.state)}`);
+        if (result.status === 'ok') {
+          session.completed = true;
+          closeModal();
+          toast(`Antigravity 登录成功 · ${result.account || result.credential_id}`, 'success');
+          await loadCredentials();
+          return;
+        }
+        if (result.status === 'error') { session.completed = true; oauthStatus(result.message || 'OAuth 登录失败。'); return; }
+        if (result.status === 'processing') oauthStatus('服务器正在交换 OAuth token…');
+      } catch (error) { oauthStatus(error.message); return; }
+    }
+    oauthStatus('OAuth 登录超时，请重新开始。');
+}
+
+function openCredentialModal(kind, id = '') {
+  editingType = kind; editingId = id ? decodeURIComponent(id) : '';
+  const isEdit = Boolean(editingId);
+  const credential = (state.credentials[kind] || []).find(item => item.id === editingId);
+  const modal = document.getElementById('modalContent');
+  const title = `${isEdit ? '编辑' : '添加'} ${kind === 'aistudio' ? 'AI Studio key' : 'Antigravity 账号'}`;
+  const note = isEdit ? '敏感字段不会回显。留空保持当前值，非敏感字段可清空。' : '敏感字段只会保存到本地配置，不会显示在列表中。';
+  const idValue = isEdit ? esc(editingId) : '';
+  if (kind === 'aistudio') {
+    modal.innerHTML = `<h2 id="modalTitle">${title}</h2><p class="modal-note">${note}</p>
+      <div class="form-group"><label for="mId">ID</label><input id="mId" value="${idValue}" ${isEdit ? 'readonly' : ''}></div>
+      <div class="form-group"><label for="mApiKey">API key</label><input id="mApiKey" type="password" autocomplete="new-password" placeholder="${isEdit && credential?.api_key_set ? '已设置；留空保持当前值' : 'AIzaSy…'}"><div class="secret-note">${isEdit ? '需要轮换时再输入新 key。' : '必填。'}</div></div>
+      <div class="form-grid"><div class="form-group"><label for="mProject">Project（可选）</label><input id="mProject" value="${esc(credential?.project || '')}"></div><div class="form-group"><label for="mAccount">Account（可选）</label><input id="mAccount" value="${esc(credential?.account || '')}" placeholder="user@gmail.com"></div></div>
+      <div class="modal-status" id="modalStatus" role="alert"></div><div class="form-actions"><button class="btn-ghost" onclick="closeModal()">取消</button><button class="btn-primary" onclick="saveCredential('aistudio')">${isEdit ? '保存' : '添加'}</button></div>`;
+  } else {
+    modal.innerHTML = `<h2 id="modalTitle">${title}</h2><p class="modal-note">${note}</p>
+      <div class="form-group"><label for="mId">ID</label><input id="mId" value="${idValue}" ${isEdit ? 'readonly' : ''}></div>
+      <div class="form-group"><label for="mAccount">Google 账号（可选）</label><input id="mAccount" value="${esc(credential?.account || '')}" placeholder="user@gmail.com"></div>
+      <div class="form-group"><label for="mClientId">Client ID</label><input id="mClientId" value="${esc(credential?.client_id || '')}" placeholder="xxx.apps.googleusercontent.com"></div>
+      <div class="form-group"><label for="mClientSecret">Client secret</label><input id="mClientSecret" type="password" autocomplete="new-password" placeholder="${isEdit && credential?.client_secret_set ? '已设置；留空保持当前值' : 'GOCSPX-…'}"></div>
+      <div class="form-group"><label for="mRefreshToken">Refresh token</label><input id="mRefreshToken" type="password" autocomplete="new-password" placeholder="${isEdit && credential?.refresh_token_set ? '已设置；留空保持当前值' : '1//…'}"></div>
+      <div class="form-group"><label for="mProject">Project（可选）</label><input id="mProject" value="${esc(credential?.project || '')}" placeholder="留空使用动态发现"></div>
+      <label class="checkbox"><input id="mAutoOnboard" type="checkbox" ${credential?.auto_onboard ? 'checked' : ''}>允许自动 onboard</label>
+      <div class="modal-status" id="modalStatus" role="alert"></div><div class="form-actions"><button class="btn-ghost" onclick="closeModal()">取消</button><button class="btn-blue" onclick="saveCredential('antigravity')">${isEdit ? '保存' : '添加'}</button></div>`;
+  }
+  document.getElementById('modalOverlay').classList.add('show');
+  document.getElementById('mId').focus();
 }
 function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); }
-document.getElementById('modalOverlay').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
-
-async function saveCred(type) {
-  const id = document.getElementById('mId').value.trim();
-  if (!id) { toast('ID is required', 'error'); return; }
+document.getElementById('modalOverlay').addEventListener('click', event => { if (event.target === event.currentTarget) closeModal(); });
+document.addEventListener('keydown', event => { if (event.key === 'Escape') closeModal(); });
+function value(id) { return document.getElementById(id).value.trim(); }
+function modalError(message) { document.getElementById('modalStatus').textContent = message; }
+async function saveCredential(kind) {
+  const id = value('mId');
+  if (!id) { modalError('ID 不能为空'); return; }
+  const isEdit = Boolean(editingId);
   try {
-    if (type === 'aistudio') {
-      const body = {
-        id,
-        api_key: document.getElementById('mApiKey').value.trim(),
-        project: document.getElementById('mProject').value.trim(),
-        account: document.getElementById('mAccount').value.trim(),
-      };
-      if (!body.api_key) { toast('API Key is required', 'error'); return; }
-      if (editingId) await api('PUT', `/api/credentials/aistudio/${encodeURIComponent(editingId)}`, body);
-      else await api('POST', '/api/credentials/aistudio', body);
+    let body;
+    if (kind === 'aistudio') {
+      const apiKey = value('mApiKey');
+      if (!isEdit && !apiKey) { modalError('新增时 API key 必填'); return; }
+      body = { project: value('mProject'), account: value('mAccount') };
+      if (!isEdit) Object.assign(body, { id, api_key: apiKey });
+      else if (apiKey) body.api_key = apiKey;
     } else {
-      const body = {
-        id,
-        client_id: document.getElementById('mClientId').value.trim(),
-        client_secret: document.getElementById('mClientSecret').value.trim(),
-        refresh_token: document.getElementById('mRefreshToken').value.trim(),
-      };
-      if (!body.client_id || !body.client_secret || !body.refresh_token) { toast('All fields required', 'error'); return; }
-      if (editingId) await api('PUT', `/api/credentials/antigravity/${encodeURIComponent(editingId)}`, body);
-      else await api('POST', '/api/credentials/antigravity', body);
+      const clientId = value('mClientId'); const clientSecret = value('mClientSecret'); const refreshToken = value('mRefreshToken');
+      if (!isEdit && (!clientId || !clientSecret || !refreshToken)) { modalError('新增时 OAuth 字段均必填'); return; }
+      body = { account: value('mAccount'), project: value('mProject'), auto_onboard: document.getElementById('mAutoOnboard').checked };
+      if (!isEdit) Object.assign(body, { id, client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken });
+      else { if (clientId) body.client_id = clientId; if (clientSecret) body.client_secret = clientSecret; if (refreshToken) body.refresh_token = refreshToken; }
     }
-    closeModal();
-    toast(editingId ? 'Updated' : 'Added', 'success');
-    loadCredentials();
-  } catch(e) { toast(e.message, 'error'); }
+    await api(isEdit ? 'PUT' : 'POST', isEdit ? `/api/credentials/${kind}/${encodeURIComponent(editingId)}` : `/api/credentials/${kind}`, body);
+    closeModal(); toast(isEdit ? '已保存，未填写的密钥保持不变' : '已添加', 'success'); await loadCredentials();
+  } catch (error) { modalError(error.message); }
 }
-async function delCred(type, id) {
-  if (!confirm(`Delete credential "${id}"?`)) return;
+async function deleteCredential(kind, encodedId) {
+  const id = decodeURIComponent(encodedId);
+  if (!confirm(`确定删除凭证“${id}”？`)) return;
+  try { await api('DELETE', `/api/credentials/${kind}/${encodeURIComponent(id)}`); toast('已删除', 'success'); await loadCredentials(); }
+  catch (error) { toast(error.message, 'error'); }
+}
+async function testCredential(kind, encodedId) {
+  const id = decodeURIComponent(encodedId); const key = `${kind}:${id}`;
+  state.busy.add(key); renderCredentials();
+  const started = performance.now();
   try {
-    await api('DELETE', `/api/credentials/${type}/${encodeURIComponent(id)}`);
-    toast('Deleted', 'success');
-    loadCredentials();
-  } catch(e) { toast(e.message, 'error'); }
+    const result = await api('POST', `/api/credentials/${kind}/${encodeURIComponent(id)}/test`);
+    const latency = Number.isFinite(result.latency_ms) ? result.latency_ms : Math.round(performance.now() - started);
+    state.tests[key] = { ok: true, message: `连接成功 · ${result.model} · ${latency} ms` };
+  } catch (error) { state.tests[key] = { ok: false, message: `连接失败 · ${error.message}` }; }
+  finally { state.busy.delete(key); renderCredentials(); }
 }
 
-// --- Usage ---
 async function loadUsage() {
-  try {
-    const s = await api('GET', '/api/usage/summary');
-    document.getElementById('usageStats').innerHTML = `
-      <div class="stat-card"><div class="stat-label">Total Requests</div><div class="stat-value">${s.total_requests}</div></div>
-      <div class="stat-card"><div class="stat-label">Input Tokens</div><div class="stat-value">${formatNum(s.total_input_tokens)}</div></div>
-      <div class="stat-card"><div class="stat-label">Output Tokens</div><div class="stat-value">${formatNum(s.total_output_tokens)}</div></div>
-      <div class="stat-card"><div class="stat-label">Est. Cost</div><div class="stat-value">$${s.total_cost_usd.toFixed(4)}</div></div>
-    `;
-    document.getElementById('usageByCred').innerHTML = s.by_credential.length ?
-      tableHtml(['Credential', 'Requests', 'Input', 'Output', 'Cost'],
-        s.by_credential.map(r => [esc(r.credential_id), r.requests, formatNum(r.input_tokens), formatNum(r.output_tokens), '$'+r.cost_usd.toFixed(4)])) :
-      '<div class="empty">No usage data yet</div>';
-    document.getElementById('usageByModel').innerHTML = s.by_model.length ?
-      tableHtml(['Model', 'Requests', 'Input', 'Output', 'Cost'],
-        s.by_model.map(r => [esc(r.model), r.requests, formatNum(r.input_tokens), formatNum(r.output_tokens), '$'+r.cost_usd.toFixed(4)])) :
-      '<div class="empty">No usage data yet</div>';
-  } catch(e) { toast(e.message, 'error'); }
+  try { state.usage = await api('GET', '/api/usage/summary'); renderUsage(); renderHealth(); }
+  catch (error) { toast(error.message, 'error'); }
+}
+function renderUsage() {
+  const summary = state.usage || { by_credential: [], by_model: [] };
+  document.getElementById('usageStats').innerHTML = [
+    ['Requests', formatNum(summary.total_requests)], ['Input tokens', formatNum(summary.total_input_tokens)],
+    ['Output tokens', formatNum(summary.total_output_tokens)], ['Cost', '$' + Number(summary.total_cost_usd || 0).toFixed(4)],
+  ].map(item => `<div class="stat"><div class="stat-label">${item[0]}</div><div class="stat-value">${item[1]}</div></div>`).join('');
+  const credentialRows = (summary.by_credential || []).map(row => [esc(row.credential_id), row.requests, formatNum(row.input_tokens), formatNum(row.output_tokens), '$' + Number(row.cost_usd || 0).toFixed(4)]);
+  const modelRows = (summary.by_model || []).map(row => [esc(row.model), row.requests, formatNum(row.input_tokens), formatNum(row.output_tokens), '$' + Number(row.cost_usd || 0).toFixed(4)]);
+  document.getElementById('usageTable').innerHTML = `<h3 style="font-size:14px">按凭证</h3>${tableHtml(['Credential', 'Requests', 'Input', 'Output', 'Cost'], credentialRows)}<h3 style="margin:22px 0 8px;font-size:14px">按模型</h3>${tableHtml(['Model', 'Requests', 'Input', 'Output', 'Cost'], modelRows)}`;
+}
+function tableHtml(headers, rows) {
+  if (!rows.length) return '<div class="empty">还没有用量数据</div>';
+  return `<table><thead><tr>${headers.map(esc).map(item => `<th>${item}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 
-// --- Settings ---
+let settingsLoaded = false;
+document.getElementById('settingsDetails').addEventListener('toggle', event => { if (event.target.open && !settingsLoaded) loadSettings(); });
 async function loadSettings() {
   try {
-    const c = await api('GET', '/api/config');
-    document.getElementById('setHost').value = c.host || '';
-    document.getElementById('setPort').value = c.port || '';
-    document.getElementById('setAuth').value = c.auth_token || '';
-    document.getElementById('setRetries').value = c.max_retries || 3;
-    document.getElementById('setCooldown').value = c.cooldown_seconds || 60;
-    document.getElementById('setDb').value = c.db_path || '';
-    document.getElementById('setProxy').value = c.proxy || '';
-    document.getElementById('setConfigFile').value = c.config_file || '';
-  } catch(e) { toast(e.message, 'error'); }
+    const config = await api('GET', '/api/config');
+    document.getElementById('setHost').value = config.host || ''; document.getElementById('setPort').value = config.port || '';
+    document.getElementById('setAuth').value = config.auth_token || ''; document.getElementById('setRetries').value = config.max_retries || 3;
+    document.getElementById('setCooldown').value = config.cooldown_seconds || 60; document.getElementById('setDb').value = config.db_path || '';
+    document.getElementById('setProxy').value = config.proxy || ''; document.getElementById('setProxySource').value = config.proxy_source || 'unknown'; document.getElementById('setConfigFile').value = config.config_file || ''; settingsLoaded = true;
+  } catch (error) { toast(error.message, 'error'); }
 }
 async function saveSettings() {
   try {
-    await api('PUT', '/api/config', {
-      host: document.getElementById('setHost').value.trim() || '127.0.0.1',
-      port: parseInt(document.getElementById('setPort').value) || 8000,
-      auth_token: document.getElementById('setAuth').value.trim(),
-      max_retries: parseInt(document.getElementById('setRetries').value) || 3,
-      cooldown_seconds: parseInt(document.getElementById('setCooldown').value) || 60,
-      db_path: document.getElementById('setDb').value.trim() || 'hakimi.db',
-      proxy: document.getElementById('setProxy').value.trim(),
-    });
-    toast('Settings saved. Restart for host/port/db changes.', 'success');
-  } catch(e) { toast(e.message, 'error'); }
+    const saved = await api('PUT', '/api/config', { host: value('setHost') || '127.0.0.1', port: Number(value('setPort')) || 8000, auth_token: value('setAuth'), max_retries: Number(value('setRetries')) || 3, cooldown_seconds: Number(value('setCooldown')) || 60, db_path: value('setDb') || 'hakimi.db', proxy: value('setProxy') });
+    document.getElementById('setProxySource').value = saved.proxy_source || 'unknown';
+    toast('设置已保存，Host/Port/数据库变更需重启', 'success');
+  } catch (error) { toast(error.message, 'error'); }
 }
 
-// --- Helpers ---
-function stateBadge(state) {
-  const map = { active: ['badge-active', '#3fb950'], cooldown: ['badge-cooldown', '#d29922'], disabled: ['badge-disabled', '#f85149'] };
-  const [cls, color] = map[state] || ['badge-cooldown', '#7a808c'];
-  return `<span class="badge ${cls}"><span class="badge-dot" style="background:${color}"></span>${state || 'unknown'}</span>`;
-}
-function formatNum(n) { return (n || 0).toLocaleString(); }
-function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
-function tableHtml(headers, rows) {
-  return '<table><thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>' +
-    rows.map(r => '<tr>' + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody></table>';
-}
-function toast(msg, type) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'toast toast-' + type + ' show';
-  setTimeout(() => t.classList.remove('show'), 3000);
-}
-
-// --- Init ---
-async function init() {
-  try {
-    const health = await api('GET', '/healthz');
-    document.getElementById('loginView').classList.add('hidden');
-    document.getElementById('appView').classList.remove('hidden');
-    document.getElementById('sidebarFooter').textContent = `${health.active_credentials}/${health.total_credentials} active`;
-    loadDashboard();
-  } catch(e) {
-    if (e.message === 'Unauthorized') return;
-    // No auth configured, show app directly
-    document.getElementById('loginView').classList.add('hidden');
-    document.getElementById('appView').classList.remove('hidden');
-    loadDashboard();
-  }
-}
+function formatNum(number) { return Number(number || 0).toLocaleString(); }
+function esc(valueToEscape) { const node = document.createElement('div'); node.textContent = valueToEscape == null ? '' : String(valueToEscape); return node.innerHTML; }
+function arg(valueToEncode) { return encodeURIComponent(valueToEncode); }
+function toast(message, type) { const node = document.getElementById('toast'); node.textContent = message; node.className = `toast ${type} show`; clearTimeout(toast.timer); toast.timer = setTimeout(() => node.classList.remove('show'), 3200); }
 init();
 </script>
 </body>

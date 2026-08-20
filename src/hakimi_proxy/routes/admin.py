@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import logging
+import re
+import time
 
+import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -16,9 +19,16 @@ from hakimi_proxy.config import (
     save_config,
 )
 from hakimi_proxy.pool import CredentialPool
+from hakimi_proxy.errors import classify_exception, classify_response
+from hakimi_proxy.proxy import configure_proxy_environment
+from hakimi_proxy.oauth import AntigravityOAuthManager, exchange_oauth_code
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
+TEST_MODELS = {
+    "aistudio": "gemini-3.7-flash",
+    "antigravity": "antigravity/gemini-3.7-flash-tiered",
+}
 
 
 class AIStudioCredIn(BaseModel):
@@ -28,13 +38,37 @@ class AIStudioCredIn(BaseModel):
     account: str = ""
 
 
+class AIStudioCredUpdate(BaseModel):
+    api_key: str | None = None
+    project: str | None = None
+    account: str | None = None
+
+
 class AntigravityCredIn(BaseModel):
     id: str
     client_id: str
     client_secret: str
     refresh_token: str
+    account: str = ""
     access_token: str = ""
     expires_at: float = 0.0
+    project: str = ""
+    auto_onboard: bool = False
+
+
+class AntigravityCredUpdate(BaseModel):
+    client_id: str | None = None
+    client_secret: str | None = None
+    refresh_token: str | None = None
+    account: str | None = None
+    project: str | None = None
+    auto_onboard: bool | None = None
+
+
+class AntigravityOAuthCompleteIn(BaseModel):
+    state: str
+    callback_url: str = ""
+    code: str = ""
 
 
 class SettingsIn(BaseModel):
@@ -45,6 +79,40 @@ class SettingsIn(BaseModel):
     cooldown_seconds: int = 60
     db_path: str = "hakimi.db"
     proxy: str = ""
+
+
+def _safe_upstream_error(response: httpx.Response) -> dict[str, object]:
+    """Expose the shared safe provider error shape."""
+    return classify_response(response).public()
+
+
+def _health(status: dict) -> str:
+    state = status.get("state")
+    if state == "cooldown":
+        return "cooldown"
+    if state == "disabled":
+        return "reauth_required" if status.get("last_error_type") == "upstream_auth_error" else "disabled"
+    success = status.get("last_success_at") or 0
+    failure = status.get("last_failure_at") or 0
+    if not success and not failure:
+        return "unknown"
+    return "healthy" if success >= failure else "degraded"
+
+
+def _runtime_status(status: dict) -> dict[str, object]:
+    return {
+        "state": status.get("state", "unknown"),
+        "health": _health(status),
+        "cooldown_remaining": status.get("cooldown_remaining", 0),
+        "failure_count": status.get("failure_count", 0),
+        "in_flight": status.get("in_flight", 0),
+        "last_success_at": status.get("last_success_at"),
+        "last_failure_at": status.get("last_failure_at"),
+        "last_error_type": status.get("last_error_type"),
+        "last_error_message": status.get("last_error_message"),
+        "last_latency_ms": status.get("last_latency_ms"),
+        "last_model": status.get("last_model"),
+    }
 
 
 def _reload_pool(request: Request, config) -> None:
@@ -58,6 +126,13 @@ def _reload_pool(request: Request, config) -> None:
     request.app.state.max_retries = config.max_retries
     request.app.state.aistudio.proxy = config.proxy
     request.app.state.antigravity.proxy = config.proxy
+    oauth_manager = getattr(request.app.state, "antigravity_oauth", None)
+    if oauth_manager is not None:
+        oauth_manager.proxy = config.proxy
+        oauth_credential = next(iter(config.antigravity_credentials), None)
+        if oauth_credential:
+            oauth_manager.client_id = oauth_credential.client_id
+            oauth_manager.client_secret = oauth_credential.client_secret
     request.app.state.config = config
 
 
@@ -80,6 +155,7 @@ async def get_settings(request: Request):
         "cooldown_seconds": config.cooldown_seconds,
         "db_path": config.db_path,
         "proxy": config.proxy,
+        "proxy_source": getattr(request.app.state, "proxy_source", "unknown"),
         "config_file": get_config_path(),
     }
 
@@ -94,9 +170,14 @@ async def update_settings(settings: SettingsIn, request: Request):
     config.cooldown_seconds = settings.cooldown_seconds
     config.db_path = settings.db_path
     config.proxy = settings.proxy
+    request.app.state.proxy_source = configure_proxy_environment(config.proxy)
     _load_and_save(request, config)
     logger.info("Settings updated via Web UI")
-    return {"status": "ok", "message": "Settings saved. Restart required for host/port/db_path changes."}
+    return {
+        "status": "ok",
+        "proxy_source": request.app.state.proxy_source,
+        "message": "Settings saved. Restart required for host/port/db_path changes.",
+    }
 
 
 # --- AI Studio credentials ---
@@ -104,6 +185,8 @@ async def update_settings(settings: SettingsIn, request: Request):
 @router.post("/credentials/aistudio")
 async def add_aistudio(cred: AIStudioCredIn, request: Request):
     config = request.app.state.config
+    if not cred.api_key.strip():
+        return JSONResponse(status_code=422, content={"error": {"message": "api_key is required"}})
     # Check for duplicate ID
     if any(c.id == cred.id for c in config.aistudio_credentials):
         return JSONResponse(status_code=409, content={"error": {"message": f"Credential '{cred.id}' already exists"}})
@@ -117,12 +200,18 @@ async def add_aistudio(cred: AIStudioCredIn, request: Request):
 
 
 @router.put("/credentials/aistudio/{cred_id}")
-async def update_aistudio(cred_id: str, cred: AIStudioCredIn, request: Request):
+async def update_aistudio(cred_id: str, cred: AIStudioCredUpdate, request: Request):
     config = request.app.state.config
     for i, c in enumerate(config.aistudio_credentials):
         if c.id == cred_id:
+            api_key = cred.api_key.strip() if cred.api_key and cred.api_key.strip() else c.api_key
+            if not api_key:
+                return JSONResponse(status_code=422, content={"error": {"message": "api_key is required"}})
             config.aistudio_credentials[i] = AIStudioCredential(
-                id=cred.id, api_key=cred.api_key, project=cred.project, account=cred.account,
+                id=c.id,
+                api_key=api_key,
+                project=c.project if cred.project is None else cred.project.strip(),
+                account=c.account if cred.account is None else cred.account.strip(),
             )
             _load_and_save(request, config)
             return {"status": "ok"}
@@ -143,9 +232,109 @@ async def delete_aistudio(cred_id: str, request: Request):
 
 # --- Antigravity credentials ---
 
+def _oauth_manager(request: Request) -> AntigravityOAuthManager:
+    manager = getattr(request.app.state, "antigravity_oauth", None)
+    if manager is None:
+        manager = AntigravityOAuthManager(proxy=request.app.state.config.proxy)
+        request.app.state.antigravity_oauth = manager
+    return manager
+
+
+def _oauth_credential_id(config, account: str) -> str:
+    base = re.sub(r"[^a-z0-9._-]+", "-", account.lower()).strip("-._") or "antigravity"
+    candidate = f"antigravity-{base}"
+    existing = {credential.id for credential in config.antigravity_credentials}
+    if candidate not in existing:
+        return candidate
+    suffix = 2
+    while f"{candidate}-{suffix}" in existing:
+        suffix += 1
+    return f"{candidate}-{suffix}"
+
+
+@router.post("/credentials/antigravity/oauth/start")
+async def start_antigravity_oauth(request: Request):
+    try:
+        return _oauth_manager(request).start()
+    except (OSError, RuntimeError) as exc:
+        logger.warning("Antigravity OAuth callback listener unavailable: %s", exc)
+        return JSONResponse(
+            status_code=409,
+            content={"error": {"message": str(exc)}},
+        )
+
+
+async def _complete_antigravity_oauth(request: Request, state: str):
+    manager = _oauth_manager(request)
+    snapshot = manager.snapshot(state)
+    if snapshot is None:
+        return JSONResponse(status_code=404, content={"error": {"message": "OAuth 登录会话不存在或已过期"}})
+    if snapshot.get("status") != "pending":
+        return snapshot
+
+    claimed = manager.claim_code(state)
+    if claimed is None:
+        return manager.snapshot(state) or snapshot
+
+    code, redirect_uri = claimed
+    try:
+        bundle = await exchange_oauth_code(
+            code,
+            redirect_uri,
+            manager.proxy,
+            manager.client_id,
+            manager.client_secret,
+        )
+        config = request.app.state.config
+        credential_id = _oauth_credential_id(config, bundle.account)
+        config.antigravity_credentials.append(AntigravityCredential(
+            id=credential_id,
+            client_id=bundle.client_id,
+            client_secret=bundle.client_secret,
+            refresh_token=bundle.refresh_token,
+            account=bundle.account,
+            access_token=bundle.access_token,
+            expires_at=bundle.expires_at,
+        ))
+        try:
+            _load_and_save(request, config)
+        except Exception:
+            config.antigravity_credentials.pop()
+            raise
+    except Exception as exc:
+        message = str(exc).strip() or type(exc).__name__
+        manager.fail(state, message)
+        return {"status": "error", "message": message[:240]}
+
+    manager.complete(state, credential_id, bundle.account)
+    return {"status": "ok", "credential_id": credential_id, "account": bundle.account}
+
+
+@router.get("/credentials/antigravity/oauth/status/{state}")
+async def antigravity_oauth_status(state: str, request: Request):
+    return await _complete_antigravity_oauth(request, state)
+
+
+@router.post("/credentials/antigravity/oauth/complete")
+async def complete_antigravity_oauth(payload: AntigravityOAuthCompleteIn, request: Request):
+    manager = _oauth_manager(request)
+    accepted = manager.record_manual_callback(
+        payload.state,
+        callback_url=payload.callback_url,
+        code=payload.code,
+    )
+    if not accepted:
+        snapshot = manager.snapshot(payload.state)
+        if snapshot and snapshot.get("status") in {"processing", "ok", "error"}:
+            return snapshot
+        return JSONResponse(status_code=400, content={"error": {"message": "OAuth 回调无效、重复或已过期"}})
+    return await _complete_antigravity_oauth(request, payload.state)
+
 @router.post("/credentials/antigravity")
 async def add_antigravity(cred: AntigravityCredIn, request: Request):
     config = request.app.state.config
+    if not all(value.strip() for value in (cred.client_id, cred.client_secret, cred.refresh_token)):
+        return JSONResponse(status_code=422, content={"error": {"message": "OAuth credentials are required"}})
     if any(c.id == cred.id for c in config.antigravity_credentials):
         return JSONResponse(status_code=409, content={"error": {"message": f"Credential '{cred.id}' already exists"}})
     new_cred = AntigravityCredential(
@@ -153,8 +342,11 @@ async def add_antigravity(cred: AntigravityCredIn, request: Request):
         client_id=cred.client_id,
         client_secret=cred.client_secret,
         refresh_token=cred.refresh_token,
+        account=cred.account,
         access_token=cred.access_token,
         expires_at=cred.expires_at,
+        project=cred.project,
+        auto_onboard=cred.auto_onboard,
     )
     config.antigravity_credentials.append(new_cred)
     _load_and_save(request, config)
@@ -163,17 +355,39 @@ async def add_antigravity(cred: AntigravityCredIn, request: Request):
 
 
 @router.put("/credentials/antigravity/{cred_id}")
-async def update_antigravity(cred_id: str, cred: AntigravityCredIn, request: Request):
+async def update_antigravity(cred_id: str, cred: AntigravityCredUpdate, request: Request):
     config = request.app.state.config
     for i, c in enumerate(config.antigravity_credentials):
         if c.id == cred_id:
+            client_id = cred.client_id.strip() if cred.client_id and cred.client_id.strip() else c.client_id
+            client_secret = cred.client_secret.strip() if cred.client_secret and cred.client_secret.strip() else c.client_secret
+            refresh_token = cred.refresh_token.strip() if cred.refresh_token and cred.refresh_token.strip() else c.refresh_token
+            account = c.account if cred.account is None else cred.account.strip()
+            if not client_id or not client_secret or not refresh_token:
+                return JSONResponse(status_code=422, content={"error": {"message": "OAuth credentials are required"}})
+            oauth_changed = (client_id, client_secret, refresh_token) != (
+                c.client_id, c.client_secret, c.refresh_token,
+            )
+            if oauth_changed:
+                project = (
+                    cred.project.strip()
+                    if cred.project is not None and cred.project.strip() != c.project
+                    else ""
+                )
+                access_token, expires_at = "", 0.0
+            else:
+                project = c.project if cred.project is None else cred.project.strip()
+                access_token, expires_at = c.access_token, c.expires_at
             config.antigravity_credentials[i] = AntigravityCredential(
-                id=cred.id,
-                client_id=cred.client_id,
-                client_secret=cred.client_secret,
-                refresh_token=cred.refresh_token,
-                access_token=cred.access_token,
-                expires_at=cred.expires_at,
+                id=c.id,
+                client_id=client_id,
+                client_secret=client_secret,
+                refresh_token=refresh_token,
+                account=account,
+                access_token=access_token,
+                expires_at=expires_at,
+                project=project,
+                auto_onboard=c.auto_onboard if cred.auto_onboard is None else cred.auto_onboard,
             )
             _load_and_save(request, config)
             return {"status": "ok"}
@@ -205,13 +419,11 @@ async def list_credentials(request: Request):
         s = status_map.get(c.id, {})
         aistudio.append({
             "id": c.id,
-            "api_key": c.api_key[:10] + "..." if len(c.api_key) > 10 else c.api_key,
+            "api_key_set": bool(c.api_key),
             "project": c.project,
             "account": c.account,
             "kind": "aistudio",
-            "state": s.get("state", "unknown"),
-            "cooldown_remaining": s.get("cooldown_remaining", 0),
-            "failure_count": s.get("failure_count", 0),
+            **_runtime_status(s),
         })
 
     antigravity = []
@@ -219,15 +431,99 @@ async def list_credentials(request: Request):
         s = status_map.get(c.id, {})
         antigravity.append({
             "id": c.id,
-            "client_id": c.client_id[:15] + "..." if len(c.client_id) > 15 else c.client_id,
-            "refresh_token": c.refresh_token[:10] + "..." if len(c.refresh_token) > 10 else c.refresh_token,
+            "account": c.account,
+            "client_id": c.client_id,
+            "client_secret_set": bool(c.client_secret),
+            "refresh_token_set": bool(c.refresh_token),
+            "access_token_expires_at": c.expires_at or None,
+            "project": c.project,
+            "auto_onboard": c.auto_onboard,
             "kind": "antigravity",
-            "state": s.get("state", "unknown"),
-            "cooldown_remaining": s.get("cooldown_remaining", 0),
-            "failure_count": s.get("failure_count", 0),
+            **_runtime_status(s),
         })
 
     return {"aistudio": aistudio, "antigravity": antigravity}
+
+
+@router.post("/credentials/{kind}/{cred_id}/test")
+async def test_credential(kind: str, cred_id: str, request: Request):
+    model = TEST_MODELS.get(kind)
+    if model is None:
+        return JSONResponse(status_code=400, content={"error": {"message": "Unknown credential provider"}})
+
+    credential = next(
+        (c for c in request.app.state.pool.all_credentials if c.kind == kind and c.id == cred_id),
+        None,
+    )
+    if credential is None:
+        return JSONResponse(status_code=404, content={"error": {"message": "Credential not found"}})
+
+    pool = request.app.state.pool
+    try:
+        credential = await pool.acquire(kind=kind, credential_id=cred_id, timeout_seconds=30)
+    except Exception as exc:
+        if getattr(exc, "reason", "") == "busy_timeout":
+            return JSONResponse(status_code=503, content={"error": {"type": "capacity_exhausted", "message": "Credential is busy"}})
+        return JSONResponse(status_code=404, content={"error": {"message": "Credential not available"}})
+
+    adapter = request.app.state.aistudio if kind == "aistudio" else request.app.state.antigravity
+    proxy_url = request.app.state.config.proxy or None
+    client = httpx.AsyncClient(proxy=proxy_url) if proxy_url else httpx.AsyncClient()
+    response = None
+    started = time.perf_counter()
+    try:
+        response = await adapter.forward(
+            {
+                "model": model,
+                "messages": [{"role": "user", "content": "Reply exactly: OK"}],
+                "max_tokens": 8,
+            },
+            credential,
+            False,
+            client,
+        )
+        if response.status_code != 200:
+            failure = classify_response(response)
+            pool.mark_failure(credential, failure.type, failure.message, latency_ms=round((time.perf_counter() - started) * 1000), model=model)
+            if failure.credential_action == "cooldown":
+                pool.mark_cooldown(credential, failure.retry_after)
+            elif failure.credential_action == "disable":
+                pool.mark_disabled(credential)
+            return JSONResponse(
+                status_code=502,
+                content={
+                    "error": failure.public(),
+                    "latency_ms": round((time.perf_counter() - started) * 1000),
+                },
+            )
+        pool.mark_success(credential, latency_ms=round((time.perf_counter() - started) * 1000), model=model)
+        return {
+            "status": "ok",
+            "credential_id": cred_id,
+            "provider": kind,
+            "model": model,
+            "latency_ms": round((time.perf_counter() - started) * 1000),
+        }
+    except Exception as exc:
+        failure = classify_exception(exc)
+        logger.warning("Credential test failed for %s: %s", cred_id, failure.message)
+        pool.mark_failure(credential, failure.type, failure.message, latency_ms=round((time.perf_counter() - started) * 1000), model=model)
+        if failure.credential_action == "cooldown":
+            pool.mark_cooldown(credential, failure.retry_after)
+        elif failure.credential_action == "disable":
+            pool.mark_disabled(credential)
+        return JSONResponse(
+            status_code=502,
+            content={
+                "error": failure.public(),
+                "latency_ms": round((time.perf_counter() - started) * 1000),
+            },
+        )
+    finally:
+        if response is not None:
+            await response.aclose()
+        await client.aclose()
+        await pool.release(credential)
 
 
 # --- Usage summary for dashboard ---

@@ -24,8 +24,11 @@ class AntigravityCredential:
     client_id: str
     client_secret: str
     refresh_token: str
+    account: str = ""
     access_token: str = ""
     expires_at: float = 0.0
+    project: str = ""
+    auto_onboard: bool = False
 
 
 @dataclass
@@ -69,8 +72,11 @@ def load_config(path: str | Path) -> ProxyConfig:
                 client_id=item["client_id"],
                 client_secret=item["client_secret"],
                 refresh_token=item["refresh_token"],
+                account=item.get("account", ""),
                 access_token=item.get("access_token", ""),
                 expires_at=item.get("expires_at", 0.0),
+                project=item.get("project", item.get("project_id", "")),
+                auto_onboard=item.get("auto_onboard", False),
             )
         )
 
@@ -121,12 +127,17 @@ def save_config(config: ProxyConfig, path: str | Path | None = None) -> None:
                 "client_id": c.client_id,
                 "client_secret": c.client_secret,
                 "refresh_token": c.refresh_token,
+                "account": c.account,
                 "access_token": c.access_token,
                 "expires_at": c.expires_at,
+                "project": c.project,
+                "auto_onboard": c.auto_onboard,
             }
             for c in config.antigravity_credentials
         ],
     }
+    path.touch(mode=0o600, exist_ok=True)
+    path.chmod(0o600)
     with open(path, "w", encoding="utf-8") as f:
         yaml.safe_dump(raw, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 

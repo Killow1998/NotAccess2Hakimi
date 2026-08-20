@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import enum
+import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
@@ -31,6 +32,13 @@ class PooledCredential(Generic[T]):
     last_used: float = 0.0
     cooldown_until: float = 0.0
     failure_count: int = 0
+    in_flight: int = 0
+    last_success_at: float = 0.0
+    last_failure_at: float = 0.0
+    last_error_type: str = ""
+    last_error_message: str = ""
+    last_latency_ms: int = 0
+    last_model: str = ""
 
     @property
     def id(self) -> str:
@@ -53,6 +61,7 @@ class CredentialPool:
     def __init__(self, cooldown_seconds: int = 60) -> None:
         self._credentials: list[PooledCredential] = []
         self._cooldown_seconds = cooldown_seconds
+        self._condition = asyncio.Condition()
 
     def add_aistudio(self, cred: AIStudioCredential) -> None:
         self._credentials.append(PooledCredential(credential=cred))
@@ -92,6 +101,96 @@ class CredentialPool:
         chosen.last_used = now
         return chosen
 
+    async def acquire(
+        self,
+        kind: str | None = None,
+        *,
+        credential_id: str | None = None,
+        timeout_seconds: float = 30.0,
+    ) -> PooledCredential:
+        """Lease one idle active credential, waiting up to ``timeout_seconds``."""
+        deadline = time.monotonic() + max(0.0, timeout_seconds)
+        while True:
+            async with self._condition:
+                now = time.time()
+                active_exists = False
+                matched = False
+                next_cooldown: float | None = None
+                candidates: list[PooledCredential] = []
+                for pc in self._credentials:
+                    if credential_id and pc.id != credential_id:
+                        continue
+                    if kind and pc.kind != kind:
+                        continue
+                    matched = True
+                    if pc.state == CredentialState.COOLDOWN:
+                        if now >= pc.cooldown_until:
+                            pc.state = CredentialState.ACTIVE
+                            pc.failure_count = 0
+                            logger.info("Credential %s recovered from cooldown", pc.id)
+                        else:
+                            next_cooldown = min(next_cooldown or pc.cooldown_until, pc.cooldown_until)
+                            continue
+                    if pc.state != CredentialState.ACTIVE:
+                        continue
+                    active_exists = True
+                    if pc.in_flight == 0:
+                        candidates.append(pc)
+
+                if candidates:
+                    chosen = min(candidates, key=lambda c: c.last_used)
+                    chosen.last_used = now
+                    chosen.in_flight = 1
+                    return chosen
+
+                remaining = deadline - time.monotonic()
+                if not matched or (not active_exists and next_cooldown is None):
+                    raise CredentialUnavailable("unavailable")
+                if remaining <= 0:
+                    reason = "busy_timeout" if active_exists else "unavailable"
+                    raise CredentialUnavailable(reason)
+                if next_cooldown is not None:
+                    remaining = min(remaining, max(0.0, next_cooldown - now))
+                if remaining <= 0:
+                    continue
+                try:
+                    await asyncio.wait_for(self._condition.wait(), timeout=remaining)
+                except asyncio.TimeoutError:
+                    continue
+
+    async def release(self, pc: PooledCredential) -> None:
+        """Release a lease and wake waiting callers."""
+        async with self._condition:
+            if pc.in_flight > 0:
+                pc.in_flight -= 1
+            else:
+                logger.warning("Credential %s released without an active lease", pc.id)
+            self._condition.notify_all()
+
+    def mark_success(self, pc: PooledCredential, *, latency_ms: int, model: str = "") -> None:
+        pc.last_success_at = time.time()
+        pc.last_latency_ms = max(0, int(latency_ms))
+        pc.last_error_type = ""
+        pc.last_error_message = ""
+        if model:
+            pc.last_model = model
+
+    def mark_failure(
+        self,
+        pc: PooledCredential,
+        error_type: str,
+        message: str,
+        *,
+        latency_ms: int = 0,
+        model: str = "",
+    ) -> None:
+        pc.last_failure_at = time.time()
+        pc.last_latency_ms = max(0, int(latency_ms))
+        pc.last_error_type = error_type
+        pc.last_error_message = message[:240]
+        if model:
+            pc.last_model = model
+
     def mark_cooldown(self, pc: PooledCredential, retry_after: int | None = None) -> None:
         """Put a credential into cooldown (429 / rate limit)."""
         duration = retry_after or self._cooldown_seconds
@@ -127,6 +226,10 @@ class CredentialPool:
         now = time.time()
         result = []
         for pc in self._credentials:
+            if pc.state == CredentialState.COOLDOWN and now >= pc.cooldown_until:
+                pc.state = CredentialState.ACTIVE
+                pc.failure_count = 0
+                logger.info("Credential %s recovered from cooldown", pc.id)
             remaining = max(0, pc.cooldown_until - now) if pc.state == CredentialState.COOLDOWN else 0
             result.append({
                 "id": pc.id,
@@ -135,5 +238,20 @@ class CredentialPool:
                 "cooldown_remaining": round(remaining, 1),
                 "failure_count": pc.failure_count,
                 "last_used": pc.last_used,
+                "in_flight": pc.in_flight,
+                "last_success_at": pc.last_success_at or None,
+                "last_failure_at": pc.last_failure_at or None,
+                "last_error_type": pc.last_error_type or None,
+                "last_error_message": pc.last_error_message or None,
+                "last_latency_ms": pc.last_latency_ms or None,
+                "last_model": pc.last_model or None,
             })
         return result
+
+
+class CredentialUnavailable(RuntimeError):
+    """No credential can be leased within the requested wait window."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason

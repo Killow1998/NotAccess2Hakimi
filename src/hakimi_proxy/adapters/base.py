@@ -48,8 +48,8 @@ class UpstreamAdapter(abc.ABC):
     def transform_stream_line(self, raw_line: str) -> tuple[str | None, dict | None]:
         """Transform one SSE line from the upstream.
 
-        Returns (openai_sse_data_or_None, usage_dict_or_None).
-        - For passthrough adapters, this parses and forwards the line as-is.
+        Returns (openai_sse_payload_or_None, usage_dict_or_None).
+        - The payload excludes the SSE ``data:`` prefix added by the route.
         - For transforming adapters, this converts to OpenAI SSE format.
         - Returns (None, None) for lines that should be skipped.
         """

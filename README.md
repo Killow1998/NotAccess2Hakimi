@@ -4,7 +4,7 @@ OpenAI-compatible Gemini proxy with account pool and built-in traffic metering.
 
 Aggregates AI Studio API Keys (single-account multi-Project key pool) and
 Antigravity OAuth credentials into a unified endpoint that speaks the OpenAI
-`/v1/chat/completions` API. Includes tokscale-style per-token cost computation
+`/v1/chat/completions` and Codex-compatible `/v1/responses` APIs. Includes tokscale-style per-token cost computation
 and SQLite-backed usage tracking.
 
 ## Features
@@ -18,21 +18,23 @@ and SQLite-backed usage tracking.
 - **Bearer auth**: protect the proxy when exposing on LAN/public.
 - **Upstream proxy**: route all upstream traffic (AI Studio + Antigravity
   OAuth) through a SOCKS/HTTP proxy, e.g. `socks5://127.0.0.1:1080`.
+- **Browser OAuth**: add an Antigravity account through a local or remote
+  Google OAuth callback instead of copying client IDs and refresh tokens by hand.
 
 ## Quick Start
 
-```bash
-# 1. Install mise + uv (one-time)
-winget install jdx.mise
-mise install  # reads .mise.toml, installs uv
+Hakimi uses `uv` for Python and dependencies; no separate version manager is required.
 
-# 2. Install Python + dependencies
-uv python install 3.12
+```bash
+# Install Python + dependencies with uv
+uv python install 3.11
 uv sync --extra dev
 
+# Create a private local config, then fill in credentials you control
+install -m 600 config.example.yaml config.local.yaml
 
-# 3. Run
-uv run uvicorn hakimi_proxy.main:app --host 127.0.0.1 --port 8000
+# Run with that config
+HAKIMI_CONFIG=config.local.yaml uv run uvicorn hakimi_proxy.main:app --host 127.0.0.1 --port 8000
 ```
 
 Then open `http://127.0.0.1:8000` in your browser to configure credentials and
@@ -45,32 +47,67 @@ Point any OpenAI-compatible client at the proxy:
 ```bash
 export OPENAI_BASE_URL=http://127.0.0.1:8000/v1
 export OPENAI_API_KEY=your-proxy-bearer-token
-export CODEX_MODEL=gemini-3.7-flash
+export CODEX_MODEL=gemini-3.7-flash-tiered
 ```
+
+Codex uses the Responses facade. It translates the request to the existing
+Chat Completions upstream path and converts text/tool-call results back to
+Responses JSON or SSE events. The original `/v1/chat/completions` endpoint
+remains available for clients that use that protocol.
+
+Bare model names prefer AI Studio. Use `antigravity/gemini-3.7-flash-tiered` to
+explicitly select the current Antigravity catalog ID. The adapter accepts the
+display alias `antigravity/gemini-3.7-flash` and forwards it as
+`gemini-3.7-flash-tiered`; `gemini-3.6-flash-high` is a separate catalog model,
+not an automatic alias for 3.7.
 
 ## API Endpoints
 
 | Endpoint | Method | Description |
 |---|---|---|
 | `/v1/chat/completions` | POST | OpenAI-compatible chat (stream + non-stream) |
+| `/v1/responses` | POST | Codex-compatible Responses (stream + non-stream) |
 | `/v1/models` | GET | List available models |
 | `/v1/usage` | GET | Aggregated usage by credential x model x day |
 | `/v1/usage/export` | GET | Individual usage log entries |
 | `/v1/credentials` | GET | Credential pool status |
 | `/healthz` | GET | Health check |
-| `/` | GET | Web UI dashboard |
+| `/` | GET | Single-page Web UI |
 
 ## Web UI
 
-The built-in dashboard at `/` provides:
+The built-in single-page console at `/` provides:
 
-- **Dashboard**: pool status, active credential count, total requests/tokens/cost
-- **Credentials**: add/edit/delete AI Studio keys and Antigravity OAuth accounts
-  with live state badges (active/cooldown/disabled)
-- **Usage**: per-credential and per-model cost breakdown
-- **Settings**: host, port, auth token, retry count, cooldown, DB path
+- service health, active credential counts, total requests/tokens/cost
+- AI Studio and Antigravity add/edit/delete cards with live state badges
+- per-credential and per-model usage breakdown
+- a collapsed settings section for host, port, auth token, retry count, cooldown,
+  database path, and upstream proxy
+
+Credential edit forms never echo secrets. Leave a secret field blank to keep the
+stored value; enter a new value only when rotating it. The credential list
+returns `*_set` metadata instead of secret fragments. `可调度`/`active` means the
+credential is locally eligible for selection, not that a remote connection test
+has succeeded; use the row-level **Test** action for that check.
 
 If `auth_token` is set, the UI shows a login screen. Otherwise it's open access.
+
+### Reliability behavior
+
+Each credential serves at most one request at a time. If all matching
+credentials are busy, a request waits up to 30 seconds and then returns
+`capacity_exhausted` (503). Rate limits and transient upstream failures may
+fail over to another credential; authentication failures disable that
+credential until it is repaired. Terminal upstream 4xx errors fail fast, and
+an upstream 2xx response with no usable output is reported as a 502 instead of
+silently completing. Streaming requests can fail over only before the first
+meaningful output event; after output starts, the proxy emits a normalized SSE
+error and does not fabricate `response.completed`.
+
+Runtime fields in `/api/credentials` and `/healthz` show in-flight requests,
+health, cooldown, last latency, and the last safe error. These are in-process
+signals: run a single Uvicorn worker when relying on them; no distributed
+coordination or quota accounting is implied.
 
 ### API Endpoints (for Web UI)
 
@@ -79,9 +116,13 @@ If `auth_token` is set, the UI shows a login screen. Otherwise it's open access.
 | `/api/config` | GET/PUT | Read/update proxy settings |
 | `/api/credentials` | GET | List all credentials with pool status |
 | `/api/credentials/aistudio` | POST | Add AI Studio key |
-| `/api/credentials/aistudio/{id}` | PUT/DELETE | Update/delete |
+| `/api/credentials/aistudio/{id}` | PUT/DELETE | Partially update/delete; omitted secrets are preserved |
 | `/api/credentials/antigravity` | POST | Add Antigravity account |
-| `/api/credentials/antigravity/{id}` | PUT/DELETE | Update/delete |
+| `/api/credentials/antigravity/{id}` | PUT/DELETE | Partially update/delete; omitted OAuth fields are preserved |
+| `/api/credentials/antigravity/oauth/start` | POST | Start local/remote browser OAuth |
+| `/api/credentials/antigravity/oauth/status/{state}` | GET | Poll the OAuth login |
+| `/api/credentials/antigravity/oauth/complete` | POST | Submit a copied callback URL or one-time OAuth code |
+| `/api/credentials/{kind}/{id}/test` | POST | Test one exact credential and return latency/error type |
 | `/api/usage/summary` | GET | Aggregated usage stats |
 
 ## Configuration
@@ -90,20 +131,49 @@ See [config.example.yaml](config.example.yaml) for the full format.
 
 ### AI Studio (API Key mode)
 
-One Google account can create multiple GCP Projects, each with its own API Key.
-Rate limits are per-Project, so N Projects = N x free-tier capacity.
+Configure API keys only for projects and accounts you are authorized to use.
 
 ### Antigravity (OAuth mode)
 
-Requires a one-time browser OAuth flow to obtain `refresh_token`. After that,
-`access_token` is auto-refreshed silently. Cloud Code API endpoints are tried
-in fallback order (daily -> prod).
+The Web UI's **+ Antigravity 登录** button is the recommended path. It opens a
+Google consent page and listens on the local callback port `51121`; on a remote
+server, copy the authorization URL to any Chrome, then paste the complete
+`localhost/.../oauth-callback?code=...&state=...` URL (or the one-time code) back
+into the dialog. Hakimi validates the session state, exchanges the code, and
+stores the account and tokens in the mode-0600 local config. Refresh tokens are
+never entered into the remote form. Manual fields remain available as a
+fallback for headless setups. When `project` is empty, Hakimi discovers it with
+`loadCodeAssist`. `onboardUser` changes account state and is disabled unless
+that credential explicitly sets `auto_onboard: true`. Cloud Code API endpoints
+are tried in fallback order (daily -> prod).
+
+The OAuth app client secret is an application-level setting, not an account
+refresh token. If the config already contains one Antigravity account, Hakimi
+reuses that client configuration for the browser flow. On a clean install, set
+`HAKIMI_ANTIGRAVITY_CLIENT_SECRET` once or use the manual form for the first
+account; later accounts need only browser authorization.
+
+Access tokens are refreshed on demand five minutes before expiry, with a
+per-account lock to avoid duplicate refreshes. If Google rotates the refresh
+token, the new value is persisted locally. This is not an artificial keepalive:
+Google can revoke or expire a refresh token, or deny the account upstream; in
+those cases the UI reports that browser authorization is required again.
+
+`config.yaml` and `config.local.yaml` are ignored by Git and saved with mode
+`0600`; never commit access tokens, refresh tokens, or client secrets. Treat
+credentials exposed in chat or obtained from a third party as compromised.
 
 ### Upstream Proxy
 
-Set `proxy` in the config to route all upstream requests through a SOCKS or
-HTTP proxy. This applies to both AI Studio API calls and Antigravity OAuth
-token refresh. Requires `httpx[socks]` (included by default) for SOCKS.
+Set `proxy` in the config to explicitly route all upstream requests through a
+SOCKS or HTTP proxy. This applies to both AI Studio API calls and Antigravity
+OAuth token refresh. Requires `httpx[socks]` (included by default) for SOCKS.
+
+Leave `proxy` empty to use the EMP-compatible automatic order at process start:
+explicit proxy environment variables, Python/system proxy settings, then Linux
+GNOME manual proxy settings. If none is available, Hakimi uses a direct
+connection. The Web UI and `/healthz` expose only the selected source
+(`config`, `environment`, `system`, or `direct`), never proxy credentials.
 
 ## Pricing
 
@@ -126,6 +196,7 @@ uv run uvicorn hakimi_proxy.main:app --reload  # dev server
 ```
 src/hakimi_proxy/
   config.py          # YAML config loading + dataclasses
+  oauth.py           # Local/remote browser OAuth callback + token exchange
   auth.py            # Bearer token middleware
   pool.py            # Credential pool state machine + LRU scheduling
   adapters/

@@ -8,13 +8,12 @@ max_retries: 3
 cooldown_seconds: 60
 db_path: hakimi.db
 
-# Upstream proxy for reaching Google APIs (e.g. socks5://127.0.0.1:1080).
-# Leave empty for direct connection. Requires httpx[socks] for SOCKS proxies.
+# Explicit upstream proxy for Google APIs (e.g. socks5://127.0.0.1:1080).
+# Leave empty for automatic environment/system/GNOME detection, then direct.
+# Requires httpx[socks] for SOCKS proxies.
 proxy: ""
 
 # AI Studio credentials (API Key mode)
-# One account can create multiple GCP Projects, each with its own API Key.
-# Rate limits are per-Project, so multiple Projects = more free-tier capacity.
 aistudio:
   - id: acct1-proj1
     api_key: "AIzaSy..."
@@ -26,12 +25,15 @@ aistudio:
     account: "user@gmail.com"
 
 # Antigravity credentials (OAuth mode)
-# Requires a one-time browser OAuth flow to obtain refresh_token.
+# Use only credentials obtained through an OAuth flow you control.
 # After that, access_token is auto-refreshed silently.
 antigravity:
   - id: acct2-antigravity
+    account: "user@gmail.com" # optional; browser OAuth fills this automatically
     client_id: "xxx.apps.googleusercontent.com"
     client_secret: "GOCSPX-xxx"
     refresh_token: "1//xxx"
-    access_token: ""      # filled automatically after first refresh
-    expires_at: 0         # 0 = will refresh on first use
+    access_token: ""     # filled automatically after first refresh
+    expires_at: 0        # 0 = will refresh on first use
+    project: ""          # discovered with loadCodeAssist when empty
+    auto_onboard: false   # explicit opt-in; onboarding changes account state
