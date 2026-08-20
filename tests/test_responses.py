@@ -170,7 +170,7 @@ def test_responses_custom_tool_history_becomes_chat_tool_messages():
             {"type": "message", "role": "user", "content": "Run it"},
             {
                 "type": "custom_tool_call",
-                "id": "ctc-1",
+                "id": "ctc_1",
                 "call_id": "call-1",
                 "name": "exec",
                 "input": "text('ok')",
@@ -348,15 +348,41 @@ def test_chat_custom_tool_response_becomes_responses_custom_tool_call():
 
     assert result["output"][0]["type"] == "reasoning"
     assert result["output"][0]["encrypted_content"] == "signature-1"
-    assert result["output"][1] == {
-        "id": "call-1",
-        "type": "custom_tool_call",
-        "status": "completed",
-        "call_id": "call-1",
-        "name": "exec",
-        "input": 'text("ok")',
-        "extra_content": {"google": {"thought_signature": "signature-1"}},
-    }
+    item = result["output"][1]
+    assert item["id"].startswith("ctc_")
+    assert item["type"] == "custom_tool_call"
+    assert item["status"] == "completed"
+    assert item["call_id"] == "call-1"
+    assert item["name"] == "exec"
+    assert item["input"] == 'text("ok")'
+    assert item["extra_content"] == {"google": {"thought_signature": "signature-1"}}
+
+
+def test_chat_custom_tool_response_normalizes_invalid_item_id():
+    result = _chat_to_response(
+        {
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{
+                        "id": "call-699187",
+                        "type": "function",
+                        "function": {"name": "exec", "arguments": '{"input":"ok"}'},
+                    }],
+                },
+                "finish_reason": "tool_calls",
+            }],
+        },
+        "gemini-3.7-flash",
+        custom_tool_names={"exec"},
+    )
+
+    item = result["output"][0]
+    assert item["type"] == "custom_tool_call"
+    assert item["id"].startswith("ctc_")
+    assert item["id"] != "call-699187"
+    assert item["call_id"] == "call-699187"
 
 
 async def test_responses_route_translates_non_stream_request(monkeypatch):
@@ -489,6 +515,8 @@ async def test_responses_route_translates_streaming_custom_tool_call(monkeypatch
     assert response.status_code == 200
     assert "event: response.custom_tool_call_input.delta" in response.text
     assert '"type": "custom_tool_call"' in response.text
+    assert '"id": "call-1"' not in response.text
+    assert '"id": "ctc_' in response.text
     assert '"thought_signature": "signature-1"' in response.text
     assert '"type": "reasoning"' in response.text
 

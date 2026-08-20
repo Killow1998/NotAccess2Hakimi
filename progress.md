@@ -304,3 +304,12 @@
 - No live Google credential or EMP worktree will be used for verification; tests remain mock-driven.
 - Completed Phase 24 in the shared NA2H checkout: credential leases, unified failure classification, stream/non-stream cleanup, empty-output rejection, runtime status, bounded-capacity errors, and the existing UI feedback.
 - Final verification: `UV_CACHE_DIR=/tmp/na2h-uv-cache uv run pytest -q` -> 117 passed; Python compileall, Web UI `new Function` parse, `git diff --check`, and uv-only/credential-pattern scans completed. EMP was not touched.
+
+## Phase 25: Responses custom-tool ID compatibility (2026-08-20)
+
+- **Status:** complete
+- Normalized non-streaming and streaming `custom_tool_call` item IDs to the
+  OpenAI Responses `ctc_*` format while preserving the upstream `call_id`.
+- Kept regular `function_call` IDs unchanged and documented the need for a
+  fresh Codex session when switching provider families with old tool history.
+- Verification: Responses tests 19 passed; full suite 118 passed.

@@ -89,6 +89,13 @@ def _custom_tool_input(arguments: Any) -> str:
     return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
+def _custom_tool_ids(raw_id: Any) -> tuple[str, str]:
+    """Return a Responses-valid item ID and the Chat tool-call ID."""
+    call_id = raw_id if isinstance(raw_id, str) and raw_id else "call_" + uuid4().hex
+    item_id = call_id if call_id.startswith("ctc_") else "ctc_" + uuid4().hex
+    return item_id, call_id
+
+
 def _thought_signature_extra(value: Any) -> dict[str, Any] | None:
     """Keep the AGY thought signature on a tool call across Responses turns."""
     if not isinstance(value, dict):
@@ -411,13 +418,15 @@ def _chat_to_response(
     for call in message.get("tool_calls", []) or []:
         function = call.get("function", {})
         name = function.get("name", "")
-        call_id = call.get("id", "")
+        raw_call_id = call.get("id", "")
+        call_id = raw_call_id
         signature = _thought_signature(call)
         if signature:
             output.append(_reasoning_item(signature))
         if name in custom_tool_names:
+            item_id, call_id = _custom_tool_ids(raw_call_id)
             item = {
-                "id": call_id or "ctc_" + uuid4().hex,
+                "id": item_id,
                 "type": "custom_tool_call",
                 "status": "completed",
                 "call_id": call_id,
@@ -527,11 +536,16 @@ def _response_stream(
             state = tool_states.get(index)
             function = call.get("function") or {}
             if state is None:
-                call_id = call.get("id") or "fc_" + uuid4().hex
+                raw_call_id = call.get("id")
                 name = function.get("name", "")
                 custom = name in custom_tool_names
+                if custom:
+                    item_id, call_id = _custom_tool_ids(raw_call_id)
+                else:
+                    call_id = raw_call_id or "fc_" + uuid4().hex
+                    item_id = call_id
                 item = {
-                    "id": call_id,
+                    "id": item_id,
                     "type": "custom_tool_call" if custom else "function_call",
                     "status": "in_progress",
                     "call_id": call_id,

@@ -2,6 +2,15 @@
 
 All notable changes to NotAccess2Hakimi are documented here.
 
+## [0.1.1] - 2026-08-20
+
+### Fixed
+
+- Normalize Responses `custom_tool_call` item IDs to the required `ctc_*`
+  prefix while preserving the original `call_id` for tool-result pairing.
+- Apply the same ID rule to streaming custom-tool output.
+- Keep ordinary `function_call` IDs unchanged.
+
 ## [0.1.0] - 2026-08-20
 
 First usable local release.

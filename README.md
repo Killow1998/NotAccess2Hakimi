@@ -2,7 +2,7 @@
 
 OpenAI-compatible Gemini proxy with account pooling and built-in traffic metering.
 
-> Current release: **v0.1.0** — local-first, single-process proxy baseline.
+> Current release: **v0.1.1** — Responses custom-tool compatibility patch.
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
@@ -79,6 +79,9 @@ Codex uses the Responses facade. It translates the request to the existing
 Chat Completions upstream path and converts text/tool-call results back to
 Responses JSON or SSE events. The original `/v1/chat/completions` endpoint
 remains available for clients that use that protocol.
+
+When switching between Hakimi and a direct Codex subscription model, start a
+new Codex session so provider-specific tool history is not replayed upstream.
 
 Bare model names prefer AI Studio. Use `antigravity/gemini-3.7-flash-tiered` to
 explicitly select the Antigravity catalog ID. The adapter accepts the display
