@@ -389,6 +389,9 @@ async def test_antigravity_credential_connection():
     assert data["provider"] == "antigravity"
     assert data["model"] == "antigravity/gemini-3.7-flash-tiered"
     assert isinstance(data["latency_ms"], int)
+    status = (await _request(app, "GET", "/api/credentials")).json()["antigravity"][0]
+    assert status["last_tested_at"] is not None
+    assert status["last_test_ok"] is True
 
 
 async def test_credential_connection_names_empty_timeout():
@@ -406,6 +409,9 @@ async def test_credential_connection_names_empty_timeout():
     assert resp.status_code == 502
     assert resp.json()["error"]["type"] == "upstream_transport_error"
     assert "ConnectTimeout" in resp.json()["error"]["message"]
+    status = (await _request(app, "GET", "/api/credentials")).json()["antigravity"][0]
+    assert status["last_tested_at"] is not None
+    assert status["last_test_ok"] is False
 
 
 async def test_credential_connection_upstream_429_exposes_safe_reason():

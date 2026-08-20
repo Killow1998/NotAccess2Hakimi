@@ -212,3 +212,5 @@ async def test_status_exposes_runtime_health_fields():
     assert status["last_success_at"] is not None
     assert status["last_latency_ms"] == 12
     assert status["last_model"] == "gemini-3.7-flash"
+    assert status["last_tested_at"] is None
+    assert status["last_test_ok"] is None

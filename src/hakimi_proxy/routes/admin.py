@@ -73,7 +73,7 @@ class AntigravityOAuthCompleteIn(BaseModel):
 
 class SettingsIn(BaseModel):
     host: str = "127.0.0.1"
-    port: int = 8000
+    port: int = 12345
     auth_token: str = ""
     max_retries: int = 3
     cooldown_seconds: int = 60
@@ -112,6 +112,8 @@ def _runtime_status(status: dict) -> dict[str, object]:
         "last_error_message": status.get("last_error_message"),
         "last_latency_ms": status.get("last_latency_ms"),
         "last_model": status.get("last_model"),
+        "last_tested_at": status.get("last_tested_at"),
+        "last_test_ok": status.get("last_test_ok"),
     }
 
 
@@ -484,6 +486,8 @@ async def test_credential(kind: str, cred_id: str, request: Request):
         )
         if response.status_code != 200:
             failure = classify_response(response)
+            credential.last_tested_at = time.time()
+            credential.last_test_ok = False
             pool.mark_failure(credential, failure.type, failure.message, latency_ms=round((time.perf_counter() - started) * 1000), model=model)
             if failure.credential_action == "cooldown":
                 pool.mark_cooldown(credential, failure.retry_after)
@@ -496,6 +500,8 @@ async def test_credential(kind: str, cred_id: str, request: Request):
                     "latency_ms": round((time.perf_counter() - started) * 1000),
                 },
             )
+        credential.last_tested_at = time.time()
+        credential.last_test_ok = True
         pool.mark_success(credential, latency_ms=round((time.perf_counter() - started) * 1000), model=model)
         return {
             "status": "ok",
@@ -507,6 +513,8 @@ async def test_credential(kind: str, cred_id: str, request: Request):
     except Exception as exc:
         failure = classify_exception(exc)
         logger.warning("Credential test failed for %s: %s", cred_id, failure.message)
+        credential.last_tested_at = time.time()
+        credential.last_test_ok = False
         pool.mark_failure(credential, failure.type, failure.message, latency_ms=round((time.perf_counter() - started) * 1000), model=model)
         if failure.credential_action == "cooldown":
             pool.mark_cooldown(credential, failure.retry_after)

@@ -38,10 +38,10 @@ uv sync --extra dev
 install -m 600 config.example.yaml config.local.yaml
 
 # Run with that config
-HAKIMI_CONFIG=config.local.yaml uv run uvicorn hakimi_proxy.main:app --host 127.0.0.1 --port 8000
+HAKIMI_CONFIG=config.local.yaml uv run python -m hakimi_proxy.main
 ```
 
-Then open `http://127.0.0.1:8000` in your browser. The Web UI can add
+Then open `http://127.0.0.1:12345` in your browser. The Web UI can add
 credentials, start Antigravity browser OAuth, run a connection test, and show
 runtime pool status; no YAML editing is required after the initial local copy.
 
@@ -52,10 +52,10 @@ Use the bearer token configured in `config.local.yaml`:
 ```bash
 export HAKIMI_TOKEN=your-secret-bearer-token
 
-curl -fsS http://127.0.0.1:8000/healthz
-curl -fsS http://127.0.0.1:8000/v1/models \
+curl -fsS http://127.0.0.1:12345/healthz
+curl -fsS http://127.0.0.1:12345/v1/models \
   -H "Authorization: Bearer $HAKIMI_TOKEN"
-curl -fsS http://127.0.0.1:8000/v1/responses \
+curl -fsS http://127.0.0.1:12345/v1/responses \
   -H "Authorization: Bearer $HAKIMI_TOKEN" \
   -H 'Content-Type: application/json' \
   --data '{"model":"antigravity/gemini-3.7-flash-tiered","input":"Reply exactly: OK","max_output_tokens":32}'
@@ -70,7 +70,7 @@ not an authentication success.
 Point any OpenAI-compatible client at the proxy:
 
 ```bash
-export OPENAI_BASE_URL=http://127.0.0.1:8000/v1
+export OPENAI_BASE_URL=http://127.0.0.1:12345/v1
 export OPENAI_API_KEY=your-proxy-bearer-token
 export CODEX_MODEL=gemini-3.7-flash-tiered
 ```
@@ -221,7 +221,7 @@ Cost is computed per-request using a five-dimensional token breakdown
 
 ```bash
 uv run pytest -v          # run tests
-uv run uvicorn hakimi_proxy.main:app --reload  # dev server
+uv run python -m hakimi_proxy.main  # dev server (auto-reload enabled)
 ```
 
 The repository uses `uv` only. Before opening a pull request or publishing a

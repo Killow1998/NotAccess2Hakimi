@@ -293,6 +293,7 @@ function renderCredentialList(kind, credentials) {
       credential.cooldown_remaining ? `冷却 ${credential.cooldown_remaining}s` : '',
       credential.last_latency_ms ? `${credential.last_latency_ms} ms` : '',
       credential.last_model ? `模型 ${credential.last_model}` : '',
+      credential.last_tested_at ? `测试：${credential.last_test_ok ? '通过' : '失败'}（${relativeAge(credential.last_tested_at)}）` : '未测试',
     ].filter(Boolean).map(esc).join(' · ');
     const lastError = credential.last_error_type
       ? `<div class="runtime-error">最近错误：${esc(credential.last_error_type)}${credential.last_error_message ? ` · ${esc(credential.last_error_message)}` : ''}</div>`
@@ -314,6 +315,12 @@ function renderCredentialList(kind, credentials) {
 }
 function healthLabel(name) {
   return { healthy: '正常', degraded: '降级', cooldown: '冷却', reauth_required: '需重新授权', disabled: '已禁用', unknown: '未知' }[name] || name || '未知';
+}
+function relativeAge(timestamp) {
+  const seconds = Math.max(0, Math.round(Date.now() / 1000 - Number(timestamp)));
+  if (seconds < 60) return `${seconds}s 前`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m 前`;
+  return `${Math.round(seconds / 3600)}h 前`;
 }
 function stateBadge(stateName) {
   const map = { active: ['badge-active', '可调度'], cooldown: ['badge-cooldown', '冷却中'], disabled: ['badge-disabled', '已禁用'] };
@@ -510,7 +517,7 @@ async function loadSettings() {
 }
 async function saveSettings() {
   try {
-    const saved = await api('PUT', '/api/config', { host: value('setHost') || '127.0.0.1', port: Number(value('setPort')) || 8000, auth_token: value('setAuth'), max_retries: Number(value('setRetries')) || 3, cooldown_seconds: Number(value('setCooldown')) || 60, db_path: value('setDb') || 'hakimi.db', proxy: value('setProxy') });
+    const saved = await api('PUT', '/api/config', { host: value('setHost') || '127.0.0.1', port: Number(value('setPort')) || 12345, auth_token: value('setAuth'), max_retries: Number(value('setRetries')) || 3, cooldown_seconds: Number(value('setCooldown')) || 60, db_path: value('setDb') || 'hakimi.db', proxy: value('setProxy') });
     document.getElementById('setProxySource').value = saved.proxy_source || 'unknown';
     toast('设置已保存，Host/Port/数据库变更需重启', 'success');
   } catch (error) { toast(error.message, 'error'); }

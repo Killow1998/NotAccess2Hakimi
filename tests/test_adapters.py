@@ -40,7 +40,7 @@ def _make_ag_cred() -> PooledCredential:
 def test_aistudio_supports_model():
     adapter = AIStudioAdapter()
     assert adapter.supports_model("gemini-3.7-flash")
-    assert adapter.supports_model("gemini-2.0-flash")
+    assert adapter.supports_model("gemini-3.5-flash")
     assert not adapter.supports_model("gpt-4")
 
 

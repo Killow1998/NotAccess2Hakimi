@@ -34,7 +34,7 @@ class AntigravityCredential:
 @dataclass
 class ProxyConfig:
     host: str = "127.0.0.1"
-    port: int = 8000
+    port: int = 12345
     auth_token: str = ""
     max_retries: int = 3
     cooldown_seconds: int = 60
@@ -82,7 +82,7 @@ def load_config(path: str | Path) -> ProxyConfig:
 
     return ProxyConfig(
         host=raw.get("host", "127.0.0.1"),
-        port=raw.get("port", 8000),
+        port=raw.get("port", 12345),
         auth_token=raw.get("auth_token", ""),
         max_retries=raw.get("max_retries", 3),
         cooldown_seconds=raw.get("cooldown_seconds", 60),

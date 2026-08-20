@@ -18,6 +18,8 @@ First usable local release.
 ### Changed
 
 - Standardized development and runtime instructions on `uv`; removed the tracked mise configuration.
+- Set the default local development port to `12345` and keep the Web UI test result visible after refresh.
+- Removed deprecated Gemini 2.x IDs from the default model discovery list.
 - Added safe upstream error classification, runtime credential health, and actionable UI status.
 - Preserved secrets in local mode-0600 config files and excluded local databases/configs from Git.
 

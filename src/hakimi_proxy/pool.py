@@ -39,6 +39,8 @@ class PooledCredential(Generic[T]):
     last_error_message: str = ""
     last_latency_ms: int = 0
     last_model: str = ""
+    last_tested_at: float = 0.0
+    last_test_ok: bool | None = None
 
     @property
     def id(self) -> str:
@@ -245,6 +247,8 @@ class CredentialPool:
                 "last_error_message": pc.last_error_message or None,
                 "last_latency_ms": pc.last_latency_ms or None,
                 "last_model": pc.last_model or None,
+                "last_tested_at": pc.last_tested_at or None,
+                "last_test_ok": pc.last_test_ok,
             })
         return result
 
