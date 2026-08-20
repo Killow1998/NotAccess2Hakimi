@@ -1,11 +1,15 @@
 # NotAccess2Hakimi
 
-OpenAI-compatible Gemini proxy with account pool and built-in traffic metering.
+OpenAI-compatible Gemini proxy with account pooling and built-in traffic metering.
 
-Aggregates AI Studio API Keys (single-account multi-Project key pool) and
-Antigravity OAuth credentials into a unified endpoint that speaks the OpenAI
-`/v1/chat/completions` and Codex-compatible `/v1/responses` APIs. Includes tokscale-style per-token cost computation
-and SQLite-backed usage tracking.
+> Current release: **v0.1.0** — local-first, single-process proxy baseline.
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
+NotAccess2Hakimi aggregates AI Studio API keys and Antigravity OAuth
+credentials behind one endpoint. It speaks OpenAI `/v1/chat/completions` and
+Codex-compatible `/v1/responses`, with SQLite-backed usage tracking and
+tokscale-style token cost estimation.
 
 ## Features
 
@@ -37,8 +41,29 @@ install -m 600 config.example.yaml config.local.yaml
 HAKIMI_CONFIG=config.local.yaml uv run uvicorn hakimi_proxy.main:app --host 127.0.0.1 --port 8000
 ```
 
-Then open `http://127.0.0.1:8000` in your browser to configure credentials and
-settings via the Web UI. No YAML editing required.
+Then open `http://127.0.0.1:8000` in your browser. The Web UI can add
+credentials, start Antigravity browser OAuth, run a connection test, and show
+runtime pool status; no YAML editing is required after the initial local copy.
+
+### Quick smoke test
+
+Use the bearer token configured in `config.local.yaml`:
+
+```bash
+export HAKIMI_TOKEN=your-secret-bearer-token
+
+curl -fsS http://127.0.0.1:8000/healthz
+curl -fsS http://127.0.0.1:8000/v1/models \
+  -H "Authorization: Bearer $HAKIMI_TOKEN"
+curl -fsS http://127.0.0.1:8000/v1/responses \
+  -H "Authorization: Bearer $HAKIMI_TOKEN" \
+  -H 'Content-Type: application/json' \
+  --data '{"model":"antigravity/gemini-3.7-flash-tiered","input":"Reply exactly: OK","max_output_tokens":32}'
+```
+
+The final response should contain `output_text: "OK"`. If the pool is
+rate-limited, wait for cooldown or use another authorized credential; a 503 is
+not an authentication success.
 
 ## Client Configuration
 
@@ -56,10 +81,18 @@ Responses JSON or SSE events. The original `/v1/chat/completions` endpoint
 remains available for clients that use that protocol.
 
 Bare model names prefer AI Studio. Use `antigravity/gemini-3.7-flash-tiered` to
-explicitly select the current Antigravity catalog ID. The adapter accepts the
-display alias `antigravity/gemini-3.7-flash` and forwards it as
+explicitly select the Antigravity catalog ID. The adapter accepts the display
+alias `antigravity/gemini-3.7-flash` and forwards it as
 `gemini-3.7-flash-tiered`; `gemini-3.6-flash-high` is a separate catalog model,
 not an automatic alias for 3.7.
+
+### v0.1.0 boundary
+
+This release targets a trusted local operator and one Uvicorn worker. Each
+credential allows one in-flight request, with a bounded wait and upstream
+failover. Runtime state resets on restart. Virtual keys, per-user quotas,
+distributed workers, and quota prediction are deliberately not part of this
+version.
 
 ## API Endpoints
 
@@ -191,6 +224,10 @@ uv run pytest -v          # run tests
 uv run uvicorn hakimi_proxy.main:app --reload  # dev server
 ```
 
+The repository uses `uv` only. Before opening a pull request or publishing a
+new release, run `uv run pytest -q`, `uv run python -m compileall -q src tests`,
+and `git diff --check`.
+
 ## Project Structure
 
 ```
@@ -209,6 +246,7 @@ src/hakimi_proxy/
     store.py         # SQLite usage store
   routes/
     chat.py          # POST /v1/chat/completions (failover + metering)
+    responses.py     # POST /v1/responses (Codex facade)
     models.py        # GET /v1/models
     usage.py         # GET /v1/usage, /v1/credentials
     admin.py         # Config management API (/api/*)
