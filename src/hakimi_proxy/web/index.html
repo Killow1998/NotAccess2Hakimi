@@ -90,14 +90,6 @@ th { padding: 8px 10px; color: var(--muted); border-bottom: 1px solid var(--bord
 td { padding: 10px; border-bottom: 1px solid var(--border); }
 tr:last-child td { border-bottom: 0; }
 .table-wrap { overflow-x: auto; }
-.integration-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr); gap: 14px; }
-.integration-card { padding: 14px; border: 1px solid var(--border); border-radius: 7px; background: rgba(255,255,255,.015); }
-.integration-card h3 { margin: 0 0 5px; font-size: 14px; }
-.integration-card p { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
-.copy-row { display: flex; align-items: stretch; gap: 7px; margin-top: 9px; }
-.copy-value { min-width: 0; flex: 1; padding: 8px 10px; overflow-wrap: anywhere; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; font: 12px/1.45 var(--mono); }
-.model-id { font: 12px var(--mono); }
-.model-meta { color: var(--muted); font-size: 11px; }
 .modal-overlay { position: fixed; inset: 0; display: none; place-items: center; padding: 20px; background: rgba(0,0,0,.7); z-index: 10; }
 .modal-overlay.show { display: grid; }
 .modal { width: min(520px, 100%); max-height: 90vh; overflow-y: auto; padding: 22px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 20px 70px rgba(0,0,0,.4); }
@@ -119,7 +111,7 @@ tr:last-child td { border-bottom: 0; }
   .top-actions, .actions { justify-content: flex-start; margin-top: 13px; }
   .stats { grid-template-columns: 1fr 1fr; }
   .credential-actions { margin-top: 12px; justify-content: flex-start; flex-wrap: wrap; }
-  .settings-grid, .modal .form-grid, .integration-grid { grid-template-columns: 1fr; }
+  .settings-grid, .modal .form-grid { grid-template-columns: 1fr; }
   .form-group.full { grid-column: auto; }
   .panel { padding: 15px; }
   th, td { padding: 8px 6px; }
@@ -173,29 +165,6 @@ tr:last-child td { border-bottom: 0; }
     </div>
   </section>
 
-  <section class="panel" id="models">
-    <div class="panel-header">
-      <div><h2>模型与 EMP 集成</h2><p>能力来自 NA2H 模型目录；未知值不会被猜测。导入 EMP 后即可显示上下文、推理档位和多模态输入。</p></div>
-      <button class="btn-ghost" onclick="loadModels()">刷新模型</button>
-    </div>
-    <div class="integration-grid">
-      <div class="integration-card">
-        <h3 id="modelCount">模型目录</h3>
-        <p>推荐 Antigravity：<span class="model-id">gemini-3.7-flash-tiered</span></p>
-        <div class="table-wrap" id="modelTable"><div class="empty">正在读取模型…</div></div>
-      </div>
-      <div class="integration-card">
-        <h3>EasyMultiProvider External Provider</h3>
-        <p>Protocol 选择 <strong>Responses</strong>，Auth mode 选择 <strong>API key</strong>。API key 请填写登录本页使用的同一个 Bearer token；页面不会复制或显示该 token。</p>
-        <label>Base URL</label>
-        <div class="copy-row"><div class="copy-value" id="empBaseUrl">—</div><button class="btn-ghost" onclick="copyEmpBaseUrl()">复制</button></div>
-        <label style="margin-top:13px">Provider 配置（不含密钥）</label>
-        <div class="copy-row"><div class="copy-value">id: hakimi · protocol: responses · auth_mode: api_key</div><button class="btn-ghost" onclick="copyEmpProvider()">复制 JSON</button></div>
-        <p style="margin-top:13px">在 EMP 中保存 Provider 后点击“拉取模型”，勾选目标模型并导入。模型 ID 会成为 <span class="model-id">hakimi/gemini-3.7-flash-tiered</span>。</p>
-      </div>
-    </div>
-  </section>
-
   <section class="panel" id="usage">
     <div class="panel-header"><div><h2>用量</h2><p>按凭证和模型查看本地计量结果。</p></div><button class="btn-ghost" onclick="loadUsage()">刷新用量</button></div>
     <div id="usageStats" class="stats"></div>
@@ -228,7 +197,7 @@ tr:last-child td { border-bottom: 0; }
 <div class="toast" id="toast" role="status"></div>
 
 <script>
-const state = { credentials: { aistudio: [], antigravity: [] }, usage: null, health: null, models: [], busy: new Set(), tests: {} };
+const state = { credentials: { aistudio: [], antigravity: [] }, usage: null, health: null, busy: new Set(), tests: {} };
 let token = localStorage.getItem('hakimi_token') || '';
 let editingType = '';
 let editingId = '';
@@ -273,67 +242,14 @@ async function init() {
 }
 async function refreshAll() {
   try {
-    const [health, credentials, usage, models] = await Promise.all([
-      api('GET', '/healthz'), api('GET', '/api/credentials'), api('GET', '/api/usage/summary'), api('GET', '/v1/models'),
+    const [health, credentials, usage] = await Promise.all([
+      api('GET', '/healthz'), api('GET', '/api/credentials'), api('GET', '/api/usage/summary'),
     ]);
-    state.health = health; state.credentials = credentials; state.usage = usage; state.models = models.data || [];
-    renderHealth(); renderCredentials(); renderModels(); renderUsage();
+    state.health = health; state.credentials = credentials; state.usage = usage;
+    renderHealth(); renderCredentials(); renderUsage();
     document.getElementById('endpoint').textContent = `OpenAI Base URL: ${window.location.origin}/v1`;
-    document.getElementById('empBaseUrl').textContent = `${window.location.origin}/v1`;
   } catch (error) { toast(error.message, 'error'); }
 }
-
-async function loadModels() {
-  try {
-    const result = await api('GET', '/v1/models');
-    state.models = result.data || [];
-    renderModels();
-  } catch (error) { toast(error.message, 'error'); }
-}
-function renderModels() {
-  const models = state.models || [];
-  document.getElementById('modelCount').textContent = `模型目录 · ${models.length}`;
-  if (!models.length) {
-    document.getElementById('modelTable').innerHTML = '<div class="empty">没有可用模型</div>';
-    return;
-  }
-  const rows = models.map(model => {
-    const context = model.context_window ? formatNum(model.context_window) : '未知';
-    const output = model.output_limit ? formatNum(model.output_limit) : '未知';
-    const reasoning = Array.isArray(model.reasoning_levels) && model.reasoning_levels.length ? model.reasoning_levels.join(' / ') : '未知';
-    const inputs = model.architecture?.input_modalities?.join(' / ') || '未知';
-    const source = model.capability_sources?.context_window?.source || 'unknown';
-    return [
-      `<span class="model-id">${esc(model.id)}</span><div class="model-meta">${esc(source)}</div>`,
-      esc(context), esc(output), esc(reasoning), esc(inputs),
-    ];
-  });
-  document.getElementById('modelTable').innerHTML = tableHtml(['Model', 'Context', 'Max output', 'Reasoning', 'Input'], rows);
-}
-function empProviderConfig() {
-  return {
-    id: 'hakimi',
-    name: 'Hakimi',
-    base_url: `${window.location.origin}/v1`,
-    protocol: 'responses',
-    auth_mode: 'api_key',
-    enabled: true,
-  };
-}
-async function copyText(valueToCopy, label) {
-  try {
-    if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
-    await navigator.clipboard.writeText(valueToCopy);
-    toast(`${label}已复制`, 'success');
-  } catch (_) {
-    const field = document.createElement('textarea');
-    field.value = valueToCopy; field.style.position = 'fixed'; field.style.opacity = '0';
-    document.body.appendChild(field); field.select(); document.execCommand('copy'); field.remove();
-    toast(`${label}已复制`, 'success');
-  }
-}
-function copyEmpBaseUrl() { return copyText(`${window.location.origin}/v1`, 'Base URL'); }
-function copyEmpProvider() { return copyText(JSON.stringify(empProviderConfig(), null, 2), 'Provider 配置'); }
 function renderHealth() {
   const health = state.health || {};
   const status = document.getElementById('serviceStatus');

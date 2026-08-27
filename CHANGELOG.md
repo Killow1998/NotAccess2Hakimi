@@ -2,6 +2,13 @@
 
 All notable changes to NotAccess2Hakimi are documented here.
 
+## [Unreleased]
+
+### Removed
+
+- Removed the EMP-specific model/provider panel from the Web UI. Standard
+  `/v1/models`, `/v1/chat/completions`, and `/v1/responses` interfaces remain.
+
 ## [0.3.0] - 2026-08-27
 
 ### Added

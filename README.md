@@ -25,8 +25,8 @@ tokscale-style token cost estimation.
 - **Browser OAuth**: add an Antigravity account through a local or remote
   Google OAuth callback instead of copying client IDs and refresh tokens by hand.
 - **Capability discovery**: `/v1/models` advertises verified context/output
-  limits, reasoning levels, modalities, protocols, and provenance for EMP and
-  other generic OpenAI clients without guessing unknown values.
+  limits, reasoning levels, modalities, protocols, and provenance for generic
+  OpenAI-compatible clients without guessing unknown values.
 - **Portable credentials**: preview and restore a versioned credentials-only
   backup over loopback or HTTPS without copying runtime access tokens.
 - **Layered health**: one manual account check distinguishes OAuth,
@@ -127,7 +127,6 @@ The built-in single-page console at `/` provides:
 - service health, active credential counts, total requests/tokens/cost
 - AI Studio and Antigravity add/edit/delete cards with live state badges
 - per-credential and per-model usage breakdown
-- verified model capability summaries and copyable EMP Provider settings
 - a collapsed settings section for host, port, auth token, retry count, cooldown,
   database path, upstream proxy, and diagnostic journal status
 
@@ -145,26 +144,6 @@ usage data. The endpoint refuses secret transfer over remote plaintext HTTP;
 store the downloaded file as carefully as the original config.
 
 If `auth_token` is set, the UI shows a login screen. Otherwise it's open access.
-
-### EasyMultiProvider
-
-Add NA2H as an EMP External Provider with these values:
-
-| Field | Value |
-|---|---|
-| ID | `hakimi` |
-| Base URL | `http://127.0.0.1:<configured-port>/v1` |
-| Protocol | `responses` |
-| Auth mode | `api_key` |
-| API key | the same NA2H `auth_token` used to enter the Web UI |
-
-Save the Provider, click **拉取模型**, select
-`gemini-3.7-flash-tiered`, and import it. EMP will create
-`hakimi/gemini-3.7-flash-tiered` with the advertised 1,048,576-token context
-window, 65,536-token output limit, `low`/`medium`/`high` reasoning levels, and
-text/image input. The Web UI's **模型与 EMP 集成** section copies the active
-Base URL and a Provider JSON skeleton, but deliberately never copies the
-Bearer token.
 
 ### Reliability behavior
 
@@ -260,7 +239,7 @@ Set `proxy` in the config to explicitly route all upstream requests through a
 SOCKS or HTTP proxy. This applies to both AI Studio API calls and Antigravity
 OAuth token refresh. Requires `httpx[socks]` (included by default) for SOCKS.
 
-Leave `proxy` empty to use the EMP-compatible automatic order at process start:
+Leave `proxy` empty to use the automatic order at process start:
 explicit proxy environment variables, Python/system proxy settings, then Linux
 GNOME manual proxy settings. If none is available, Hakimi uses a direct
 connection. The Web UI and `/healthz` expose only the selected source
