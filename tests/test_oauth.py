@@ -1,5 +1,6 @@
 import time
 
+from hakimi_proxy import oauth as oauth_module
 from hakimi_proxy.oauth import AntigravityOAuthManager, _OAuthSession
 
 
@@ -36,3 +37,28 @@ def test_manual_callback_rejects_wrong_path_or_state():
         "wrong-state",
         callback_url="http://localhost:51121/oauth-callback?code=one-time&state=wrong-state",
     )
+
+
+def test_remote_start_does_not_bind_callback_listener(monkeypatch):
+    def unexpected_listener(*args, **kwargs):
+        raise AssertionError("remote OAuth must not bind a callback socket")
+
+    monkeypatch.setattr(oauth_module, "_CallbackServer", unexpected_listener)
+    manager = AntigravityOAuthManager(client_secret="client-secret")
+
+    session = manager.start(mode="remote")
+
+    assert session["mode"] == "remote"
+    assert session["redirect_uri"] == "http://localhost:51121/oauth-callback"
+    assert manager._server is None
+
+
+def test_oauth_start_rejects_unknown_mode():
+    manager = AntigravityOAuthManager(client_secret="client-secret")
+
+    try:
+        manager.start(mode="automatic")
+    except ValueError as exc:
+        assert str(exc) == "OAuth mode must be 'local' or 'remote'"
+    else:
+        raise AssertionError("unknown OAuth mode was accepted")

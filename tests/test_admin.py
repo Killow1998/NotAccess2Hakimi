@@ -9,7 +9,7 @@ import pytest
 from httpx2 import ASGITransport, AsyncClient
 
 from hakimi_proxy.auth import BearerAuthMiddleware
-from hakimi_proxy.config import AIStudioCredential, ProxyConfig
+from hakimi_proxy.config import AIStudioCredential, AntigravityCredential, ProxyConfig
 from hakimi_proxy.main import create_app
 from hakimi_proxy.metering.store import UsageStore
 from hakimi_proxy.pool import CredentialPool
@@ -39,9 +39,21 @@ def _make_admin_app():
     return app
 
 
-async def _request(app, method, path, **kwargs):
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+async def _request(app, method, path, base_url="http://testserver", **kwargs):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=base_url) as client:
         return await client.request(method, path, **kwargs)
+
+
+def _stub_antigravity_preflight(app):
+    async def refresh(cred):
+        cred.credential.access_token = "access-token"
+        cred.credential.expires_at = 9999999999.0
+
+    async def check_control_plane(cred, client):
+        return httpx.Response(200, json={"cloudaicompanionProject": "project-1"})
+
+    app.state.antigravity.refresh_credential = refresh
+    app.state.antigravity.check_control_plane = check_control_plane
 
 
 async def test_get_config():
@@ -70,6 +82,136 @@ async def test_list_credentials_exposes_runtime_status():
     assert runtime["health"] == "unknown"
     assert runtime["in_flight"] == 0
     assert runtime["last_error_type"] is None
+
+
+async def test_credential_export_requires_https_and_omits_runtime_secrets():
+    app = _make_admin_app()
+    app.state.config.auth_token = "downstream-secret"
+    app.state.config.proxy = "socks5://proxy-secret"
+    app.state.config.aistudio_credentials.append(
+        AIStudioCredential(id="ai-1", api_key="api-secret"),
+    )
+    app.state.config.antigravity_credentials.append(AntigravityCredential(
+        id="ag-1",
+        client_id="client-id",
+        client_secret="client-secret",
+        refresh_token="refresh-secret",
+        access_token="short-lived-access",
+        expires_at=123.0,
+    ))
+
+    insecure = await _request(
+        app,
+        "GET",
+        "/api/credentials/export",
+        base_url="http://na2h.example",
+    )
+    assert insecure.status_code == 403
+
+    loopback = await _request(
+        app,
+        "GET",
+        "/api/credentials/export",
+        base_url="http://127.0.0.1",
+    )
+    assert loopback.status_code == 200
+
+    response = await _request(
+        app,
+        "GET",
+        "/api/credentials/export",
+        base_url="https://na2h.example",
+    )
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert "attachment" in response.headers["content-disposition"]
+    assert response.json()["aistudio"][0]["api_key"] == "api-secret"
+    assert response.json()["antigravity"][0]["refresh_token"] == "refresh-secret"
+    assert "short-lived-access" not in response.text
+    assert "downstream-secret" not in response.text
+    assert "proxy-secret" not in response.text
+
+
+async def test_credential_import_previews_then_applies_with_mode_0600(_isolate_config):
+    app = _make_admin_app()
+    app.state.config.aistudio_credentials.append(
+        AIStudioCredential(id="existing", api_key="keep-me"),
+    )
+    bundle = {
+        "format": "notaccess2hakimi.credentials",
+        "version": 1,
+        "aistudio": [
+            {"id": "existing", "api_key": "replace-me"},
+            {"id": "new-ai", "api_key": "new-key"},
+        ],
+        "antigravity": [{
+            "id": "new-ag",
+            "client_id": "client-id",
+            "client_secret": "client-secret",
+            "refresh_token": "refresh-token",
+            "access_token": "must-be-ignored",
+        }],
+    }
+
+    preview = await _request(
+        app,
+        "POST",
+        "/api/credentials/import",
+        base_url="https://na2h.example",
+        json={"bundle": bundle, "action": "preview", "conflict": "skip"},
+    )
+    assert preview.status_code == 200
+    assert preview.json()["status"] == "preview"
+    assert preview.json()["plan"]["total_new"] == 2
+    assert preview.json()["plan"]["total_conflicts"] == 1
+    assert len(app.state.config.aistudio_credentials) == 1
+
+    applied = await _request(
+        app,
+        "POST",
+        "/api/credentials/import",
+        base_url="https://na2h.example",
+        json={"bundle": bundle, "action": "apply", "conflict": "skip"},
+    )
+    assert applied.status_code == 200
+    assert applied.json()["result"] == {"imported": 2, "overwritten": 0, "skipped": 1}
+    assert next(c for c in app.state.config.aistudio_credentials if c.id == "existing").api_key == "keep-me"
+    imported_ag = next(c for c in app.state.config.antigravity_credentials if c.id == "new-ag")
+    assert imported_ag.access_token == ""
+    assert imported_ag.expires_at == 0.0
+    assert _isolate_config.stat().st_mode & 0o777 == 0o600
+
+
+async def test_credential_import_rejects_insecure_or_invalid_bundle():
+    app = _make_admin_app()
+    app.state.config.aistudio_credentials.append(
+        AIStudioCredential(id="existing", api_key="keep-me"),
+    )
+    payload = {
+        "bundle": {"format": "notaccess2hakimi.credentials", "version": 99},
+        "action": "apply",
+        "conflict": "overwrite",
+    }
+
+    insecure = await _request(
+        app,
+        "POST",
+        "/api/credentials/import",
+        base_url="http://na2h.example",
+        json=payload,
+    )
+    assert insecure.status_code == 403
+
+    invalid = await _request(
+        app,
+        "POST",
+        "/api/credentials/import",
+        base_url="https://na2h.example",
+        json=payload,
+    )
+    assert invalid.status_code == 422
+    assert invalid.json()["error"]["type"] == "invalid_credential_bundle"
+    assert [item.id for item in app.state.config.aistudio_credentials] == ["existing"]
 
 
 async def test_update_settings():
@@ -228,18 +370,32 @@ async def test_antigravity_oauth_status_creates_credential(monkeypatch, _isolate
 
 async def test_antigravity_oauth_start_returns_browser_session():
     app = _make_admin_app()
-    app.state.antigravity_oauth = SimpleNamespace(start=lambda: {
-        "status": "pending",
-        "state": "state-1",
-        "authorization_url": "https://accounts.google.com/o/oauth2/v2/auth?state=state-1",
-        "expires_in": 300,
-    })
+    modes = []
 
-    response = await _request(app, "POST", "/api/credentials/antigravity/oauth/start")
+    def start(mode):
+        modes.append(mode)
+        return {
+            "status": "pending",
+            "state": "state-1",
+            "mode": mode,
+            "authorization_url": "https://accounts.google.com/o/oauth2/v2/auth?state=state-1",
+            "expires_in": 300,
+        }
+
+    app.state.antigravity_oauth = SimpleNamespace(start=start)
+
+    response = await _request(
+        app,
+        "POST",
+        "/api/credentials/antigravity/oauth/start",
+        json={"mode": "remote"},
+    )
 
     assert response.status_code == 200
     assert response.json()["status"] == "pending"
+    assert response.json()["mode"] == "remote"
     assert "authorization_url" in response.json()
+    assert modes == ["remote"]
 
 
 async def test_antigravity_oauth_complete_accepts_remote_callback(monkeypatch, _isolate_config):
@@ -373,12 +529,21 @@ async def test_antigravity_credential_connection():
         "id": "ag-test", "client_id": "cid", "client_secret": "cs", "refresh_token": "rt",
     })
 
+    async def refresh(cred):
+        cred.credential.access_token = "access-token"
+        cred.credential.expires_at = 9999999999.0
+
+    async def check_control_plane(cred, client):
+        return httpx.Response(200, json={"cloudaicompanionProject": "project-1"})
+
     async def forward(body, cred, stream, client):
         assert cred.id == "ag-test"
         assert body["model"] == "antigravity/gemini-3.7-flash-tiered"
         assert stream is False
         return httpx.Response(200, json={"response": {}})
 
+    app.state.antigravity.refresh_credential = refresh
+    app.state.antigravity.check_control_plane = check_control_plane
     app.state.antigravity.forward = forward
     resp = await _request(app, "POST", "/api/credentials/antigravity/ag-test/test")
 
@@ -389,9 +554,51 @@ async def test_antigravity_credential_connection():
     assert data["provider"] == "antigravity"
     assert data["model"] == "antigravity/gemini-3.7-flash-tiered"
     assert isinstance(data["latency_ms"], int)
+    assert data["health"]["status"] == "healthy"
+    assert [stage["name"] for stage in data["health"]["stages"]] == [
+        "local", "oauth", "control_plane", "inference",
+    ]
     status = (await _request(app, "GET", "/api/credentials")).json()["antigravity"][0]
     assert status["last_tested_at"] is not None
     assert status["last_test_ok"] is True
+
+
+async def test_antigravity_health_reports_control_plane_failure_stage():
+    app = _make_admin_app()
+    await _request(app, "POST", "/api/credentials/antigravity", json={
+        "id": "ag-control-fail", "client_id": "cid", "client_secret": "cs", "refresh_token": "rt",
+    })
+
+    async def refresh(cred):
+        cred.credential.access_token = "access-token"
+
+    async def check_control_plane(cred, client):
+        return httpx.Response(
+            403,
+            json={"error": {"status": "PERMISSION_DENIED", "message": "Account is not eligible"}},
+        )
+
+    async def unexpected_forward(*args, **kwargs):
+        raise AssertionError("inference must not run after control-plane failure")
+
+    app.state.antigravity.refresh_credential = refresh
+    app.state.antigravity.check_control_plane = check_control_plane
+    app.state.antigravity.forward = unexpected_forward
+
+    response = await _request(
+        app,
+        "POST",
+        "/api/credentials/antigravity/ag-control-fail/test",
+    )
+
+    assert response.status_code == 502
+    body = response.json()
+    assert body["error"]["stage"] == "control_plane"
+    assert body["health"]["status"] == "unhealthy"
+    assert [stage["name"] for stage in body["health"]["stages"]] == [
+        "local", "oauth", "control_plane",
+    ]
+    assert body["health"]["stages"][-1]["status"] == "error"
 
 
 async def test_credential_connection_names_empty_timeout():
@@ -403,6 +610,7 @@ async def test_credential_connection_names_empty_timeout():
     async def forward(body, cred, stream, client):
         raise httpx.ConnectTimeout("")
 
+    _stub_antigravity_preflight(app)
     app.state.antigravity.forward = forward
     resp = await _request(app, "POST", "/api/credentials/antigravity/ag-timeout/test")
 
@@ -427,6 +635,7 @@ async def test_credential_connection_upstream_429_exposes_safe_reason():
             headers={"retry-after": "60"},
         )
 
+    _stub_antigravity_preflight(app)
     app.state.antigravity.forward = forward
     resp = await _request(app, "POST", "/api/credentials/antigravity/ag-rate-limited/test")
 

@@ -466,6 +466,30 @@ class AntigravityAdapter(UpstreamAdapter):
     def _headers(access_token: str) -> dict[str, str]:
         return {**ANTIGRAVITY_HEADERS, "Authorization": f"Bearer {access_token}"}
 
+    async def check_control_plane(
+        self,
+        cred: PooledCredential,
+        client: httpx.AsyncClient,
+    ) -> httpx.Response:
+        """Probe loadCodeAssist without onboarding or generation traffic."""
+        ag: AntigravityCredential = cred.credential  # type: ignore[attr-defined]
+        response = await client.post(
+            LOAD_CODE_ASSIST_URL,
+            json={"metadata": {"ideType": "ANTIGRAVITY"}},
+            headers=self._headers(ag.access_token),
+            timeout=30.0,
+        )
+        if response.status_code == 200:
+            try:
+                project = _extract_project_id(response.json())
+            except (ValueError, TypeError):
+                project = ""
+            if project and project != ag.project:
+                ag.project = project
+                if self.on_credential_update:
+                    self.on_credential_update()
+        return response
+
     async def _ensure_project(
         self, ag: AntigravityCredential, client: httpx.AsyncClient
     ) -> str | httpx.Response:

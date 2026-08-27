@@ -181,3 +181,52 @@
   resume, repeated custom-tool calls, tool outputs, and a final `ls + README`
   task without a protocol error. This validates the full
   Codex-to-EMP-to-NA2H-to-Antigravity round trip, not only an adapter unit test.
+
+## Server portability landing decision (2026-08-27)
+
+- Current remote OAuth completion is functionally usable, but `start()` always
+  binds `127.0.0.1:51121`; a server/container can therefore fail before the
+  copy/paste flow begins even though remote completion needs no listener.
+- Credential portability has no first-class API or UI. `/v1/usage/export`
+  exports metering records only; moving accounts currently means copying the
+  secret-bearing YAML and optionally the SQLite database by hand.
+- The minimum viable server slice keeps one in-memory OAuth session and one
+  worker, but makes local versus remote callback behavior explicit. Multi-user,
+  multi-worker session persistence, Docker packaging, and background quota
+  polling are deferred until this slice proves the deployment path.
+- Credential bundles must be versioned and credentials-only. They must exclude
+  short-lived access tokens, proxy settings, downstream bearer auth, runtime
+  health, and usage records. Secret export is allowed only over loopback or
+  HTTPS and must use `Cache-Control: no-store`.
+- AGY health must be layered: passive request health remains traffic-free;
+  active OAuth/control-plane checks are manual; generation remains an explicit
+  full Test. No periodic keepalive or high-frequency status polling is added.
+- The public UI should keep one OAuth action. It selects local automatic mode
+  only when the browser itself opened Hakimi through a loopback hostname;
+  domain/IP access uses listener-free remote completion. Both modes retain the
+  copied callback URL fallback. The API keeps an explicit mode for tests and
+  non-browser clients, with body-less requests defaulting to remote.
+- `_OAuthSession` can carry a mode field without changing code exchange: both
+  modes must use the registered localhost redirect URI, while only local mode
+  instantiates `_CallbackServer`.
+- Credential import/export can stay inside the current YAML contract: a pure
+  bundle module validates all input and builds replacement credential lists,
+  while the admin route owns HTTPS/loopback enforcement, persistence, and pool
+  reload. This avoids coupling secret parsing to browser or runtime state.
+- A single “凭证迁移” modal keeps the credential toolbar compact. It downloads
+  a clearly marked sensitive JSON backup and performs import preview before an
+  explicit skip/overwrite apply; secret values are never rendered in the UI.
+- The existing Test endpoint already owns the exact-credential lease, failure
+  classification, cooldown/disable actions, and full inference probe. Health
+  should deepen that one action instead of adding another button or scheduler.
+- AGY staging can be explicit with one adapter control-plane seam: refresh the
+  OAuth token, call `loadCodeAssist` even when a project is cached, then run the
+  existing generation probe. The route records `local`, `oauth`,
+  `control_plane`, and `inference` stages; AI Studio retains an inference-only
+  check.
+- The staged route can preserve all existing 429/auth/transport state actions
+  by converting non-200 stage responses into the same `UpstreamError` path.
+  The only new public data is the failed stage and per-stage latency; no token,
+  project payload, or raw upstream body is returned.
+- The final operator check passed all four stages—local, OAuth, control-plane,
+  and inference—in 13,668 ms after restarting the updated application.

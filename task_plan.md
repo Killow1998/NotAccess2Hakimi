@@ -4,7 +4,7 @@
 Keep the verified AI Studio path intact and complete the AGY adapter protocol for accounts the operator owns and is authorized to use, without storing or exercising exposed third-party credentials.
 
 ## Current Phase
-Phase 30 complete (v0.2.1 Codex tool-history replay fix)
+Phase 33 complete; automated and live acceptance passed
 
 ## Phases
 
@@ -223,6 +223,31 @@ Phase 30 complete (v0.2.1 Codex tool-history replay fix)
 - [x] Run focused/full uv verification and publish patch release metadata
 - **Status:** complete
 
+### Phase 31: Server-safe remote OAuth
+- [x] Add explicit local/remote OAuth start modes
+- [x] Make remote mode generate a valid session without binding callback port 51121
+- [x] Preserve local automatic callback behavior and state/code validation
+- [x] Keep one login action and select local/remote completion from the current browser host
+- [x] Add socket-free remote-mode regressions and run focused verification
+- **Status:** complete
+
+### Phase 32: Portable credential backup and restore
+- [x] Define a versioned credentials-only bundle that excludes access tokens, proxy, bearer auth, and usage data
+- [x] Add export with no-store/download headers and local-or-HTTPS transport enforcement
+- [x] Add import preview plus explicit skip/overwrite conflict handling
+- [x] Add Web UI download/upload confirmation without displaying stored secrets
+- [x] Preserve mode-0600 config persistence and add round-trip/security regressions
+- **Status:** complete
+
+### Phase 33: Layered Antigravity health checks
+- [x] Separate passive runtime health from active OAuth/control-plane/inference checks
+- [x] Reuse existing credential leases and safe upstream error classification
+- [x] Avoid background polling and any automatic generation traffic
+- [x] Show actionable health stages and last-check state in the existing credential card
+- [x] Verify staged behavior with mocked regressions and full automated checks
+- [x] Pass one post-restart operator live check across all four stages
+- **Status:** complete
+
 ## Decisions Made
 
 | Decision | Rationale |
@@ -250,3 +275,6 @@ Phase 30 complete (v0.2.1 Codex tool-history replay fix)
 | Temporary custom-tool probe had a mismatched list/parenthesis close | 1 | Corrected the throwaway probe before rerunning; no repository code was involved |
 | AGY returned 400 after a successful tool call | 1 | Captured `Function call is missing a thought_signature`; preserve the signature on the Responses tool item and replay it on the next Chat/Gemini request |
 | OAuth manager unit test could not bind a loopback socket in the managed sandbox | 1 | Keep socket-free state-machine coverage in the repository; reserve the real callback listener check for an approved runtime smoke test |
+| Phase 31 session-catchup could not lock the read-only default uv cache | 1 | Re-run once with `UV_CACHE_DIR=/tmp/na2h-uv-cache` and `--no-sync` |
+| Two legacy credential-Test fixtures hit real preflight after staged health was added | 1 | Stub successful OAuth/control-plane stages so each test still isolates timeout or 429 inference behavior |
+| Final documentation patch used a stale progress-file context | 1 | Re-read the file tail and apply the same update against the current text |

@@ -18,9 +18,9 @@ button, input, select { font: inherit; }
 button { cursor: pointer; border: 0; border-radius: 6px; padding: 8px 13px; transition: opacity .15s, border-color .15s; }
 button:hover:not(:disabled) { opacity: .85; }
 button:disabled { cursor: wait; opacity: .55; }
-input, textarea { width: 100%; padding: 8px 10px; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; }
+input, textarea, select { width: 100%; padding: 8px 10px; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; }
 textarea { min-height: 74px; resize: vertical; font: 12px/1.45 var(--mono); overflow-wrap: anywhere; }
-input:focus, textarea:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
 label { display: block; margin: 0 0 5px; color: var(--muted); font-size: 12px; font-weight: 600; }
 a { color: var(--blue); }
 .hidden { display: none !important; }
@@ -160,6 +160,7 @@ tr:last-child td { border-bottom: 0; }
         <button class="btn-primary" onclick="openCredentialModal('aistudio')">+ AI Studio</button>
         <button class="btn-blue" onclick="startAntigravityOAuth()">+ Antigravity 登录</button>
         <button class="btn-ghost" onclick="openCredentialModal('antigravity')">手动配置</button>
+        <button class="btn-ghost" onclick="openCredentialMigrationModal()">凭证迁移</button>
       </div>
     </div>
     <div class="provider-block">
@@ -232,6 +233,7 @@ let token = localStorage.getItem('hakimi_token') || '';
 let editingType = '';
 let editingId = '';
 let oauthSession = null;
+let pendingCredentialBundle = null;
 
 async function api(method, path, body) {
   const options = { method, headers: {} };
@@ -243,7 +245,7 @@ async function api(method, path, body) {
   const response = await fetch(path, options);
   if (response.status === 401) { showLogin(); throw new Error('Unauthorized'); }
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error?.message || 'Request failed');
+  if (!response.ok) { const error = new Error(data.error?.message || 'Request failed'); error.data = data; throw error; }
   return data;
 }
 
@@ -378,7 +380,7 @@ function renderCredentialList(kind, credentials) {
       credential.cooldown_remaining ? `冷却 ${credential.cooldown_remaining}s` : '',
       credential.last_latency_ms ? `${credential.last_latency_ms} ms` : '',
       credential.last_model ? `模型 ${credential.last_model}` : '',
-      credential.last_tested_at ? `测试：${credential.last_test_ok ? '通过' : '失败'}（${relativeAge(credential.last_tested_at)}）` : '未测试',
+      credential.last_tested_at ? `检查：${credential.last_test_ok ? '通过' : '失败'}（${relativeAge(credential.last_tested_at)}）` : '未检查',
     ].filter(Boolean).map(esc).join(' · ');
     const lastError = credential.last_error_type
       ? `<div class="runtime-error">最近错误：${esc(credential.last_error_type)}${credential.last_error_message ? ` · ${esc(credential.last_error_message)}` : ''}</div>`
@@ -388,7 +390,7 @@ function renderCredentialList(kind, credentials) {
         <div><div class="credential-name">${esc(credential.id)}</div><div class="credential-meta">${detail.filter(Boolean).map(esc).map(value => `<span>${value}</span>`).join('')}</div></div>
         <div class="credential-actions">
           ${stateBadge(credential.state)}
-          <button class="btn-ghost" ${state.busy.has(key) ? 'disabled' : ''} onclick="testCredential('${kind}','${arg(credential.id)}')">${state.busy.has(key) ? '测试中…' : 'Test'}</button>
+          <button class="btn-ghost" ${state.busy.has(key) ? 'disabled' : ''} onclick="testCredential('${kind}','${arg(credential.id)}')">${state.busy.has(key) ? '检查中…' : '检查'}</button>
           <button class="btn-ghost" onclick="openCredentialModal('${kind}','${arg(credential.id)}')">Edit</button>
           <button class="btn-danger" onclick="deleteCredential('${kind}','${arg(credential.id)}')">Delete</button>
         </div>
@@ -415,19 +417,23 @@ function stateBadge(stateName) {
 
 async function startAntigravityOAuth() {
   try {
-    const session = await api('POST', '/api/credentials/antigravity/oauth/start');
+    const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
+    const mode = localHosts.has(window.location.hostname) ? 'local' : 'remote';
+    const session = await api('POST', '/api/credentials/antigravity/oauth/start', { mode });
     oauthSession = session;
     openAntigravityOAuthModal(session);
     const popup = window.open(session.authorization_url, '_blank', 'noopener,noreferrer');
     if (!popup) oauthStatus('浏览器阻止了新窗口；请点击“打开授权链接”或复制到任意 Chrome。');
-    else oauthStatus('已打开 Google 登录页；完成后可自动回填，也可以粘贴回调 URL。');
-    pollAntigravityOAuth(session);
+    else if (session.mode === 'local') oauthStatus('已打开 Google 登录页；本机回调成功后会自动完成。');
+    else oauthStatus('已打开 Google 登录页；完成后请粘贴地址栏里的回调 URL。');
+    if (session.mode === 'local') pollAntigravityOAuth(session);
   } catch (error) { toast(error.message, 'error'); }
 }
 
 function openAntigravityOAuthModal(session) {
+  const remote = session.mode === 'remote';
   document.getElementById('modalContent').innerHTML = `<h2 id="modalTitle">Antigravity 登录</h2>
-    <p class="modal-note">本机登录可直接打开；服务器部署时，把授权链接复制到自己的 Chrome。Google 登录后即使看到 localhost 连接失败，也请复制浏览器地址栏里的完整 URL 粘贴回来。</p>
+    <p class="modal-note">${remote ? '请在任意 Chrome 完成登录；跳转 localhost 后即使连接失败，也要复制地址栏完整 URL 并粘贴回来。' : '完成 Google 登录后会自动回填；如果没有自动完成，也可以粘贴浏览器地址栏里的完整回调 URL。'}</p>
     <div class="form-group"><label for="oauthUrl">授权链接</label><textarea id="oauthUrl" readonly>${esc(session.authorization_url)}</textarea><div class="secret-note">回调地址：${esc(session.redirect_uri || 'http://localhost:51121/oauth-callback')}</div></div>
     <div class="form-actions"><button class="btn-ghost" onclick="copyOAuthUrl()">复制链接</button><button class="btn-ghost" onclick="openOAuthUrl()">打开授权链接</button></div>
     <div class="form-group"><label for="oauthResult">授权结果（完整回调 URL 或 OAuth code）</label><textarea id="oauthResult" placeholder="${esc(session.redirect_uri || 'http://localhost:51121/oauth-callback')}?code=...&state=..."></textarea></div>
@@ -494,6 +500,64 @@ async function pollAntigravityOAuth(session) {
       } catch (error) { oauthStatus(error.message); return; }
     }
     oauthStatus('OAuth 登录超时，请重新开始。');
+}
+
+function openCredentialMigrationModal() {
+  pendingCredentialBundle = null;
+  document.getElementById('modalContent').innerHTML = `<h2 id="modalTitle">凭证迁移</h2>
+    <p class="modal-note">备份包含 API key、client secret 和 refresh token，属于敏感文件。不会包含短期 access token、代理、Bearer token 或用量数据库；请妥善保管。</p>
+    <div class="form-actions"><button class="btn-blue" onclick="exportCredentials()">导出敏感备份</button></div>
+    <div class="form-group"><label for="credentialImportFile">恢复备份</label><input id="credentialImportFile" type="file" accept="application/json,.json" onchange="previewCredentialImport(event)"><div class="secret-note">选择文件后先预览新增项和 ID 冲突，不会立即写入。</div></div>
+    <div id="credentialImportPreview" class="modal-status" role="status">尚未选择备份文件。</div>
+    <div class="form-group"><label for="credentialConflict">ID 冲突处理</label><select id="credentialConflict"><option value="skip">保留当前凭证（推荐）</option><option value="overwrite">使用备份覆盖</option></select></div>
+    <div class="form-actions"><button class="btn-ghost" onclick="closeModal()">关闭</button><button class="btn-primary" id="credentialImportApply" onclick="applyCredentialImport()" disabled>确认恢复</button></div>`;
+  document.getElementById('modalOverlay').classList.add('show');
+}
+
+async function exportCredentials() {
+  if (!confirm('导出的文件包含长期凭证。确定下载并自行安全保管？')) return;
+  try {
+    const bundle = await api('GET', '/api/credentials/export');
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.download = 'na2h-credentials.json';
+    document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+    toast('敏感凭证备份已导出', 'success');
+  } catch (error) { toast(error.message, 'error'); }
+}
+
+async function previewCredentialImport(event) {
+  const file = event.target.files?.[0];
+  const preview = document.getElementById('credentialImportPreview');
+  const applyButton = document.getElementById('credentialImportApply');
+  pendingCredentialBundle = null; applyButton.disabled = true;
+  if (!file) { preview.textContent = '尚未选择备份文件。'; return; }
+  if (file.size > 1024 * 1024) { preview.textContent = '备份文件超过 1 MiB 限制。'; return; }
+  try {
+    const bundle = JSON.parse(await file.text());
+    const result = await api('POST', '/api/credentials/import', { bundle, action: 'preview', conflict: 'skip' });
+    pendingCredentialBundle = bundle;
+    const plan = result.plan || {};
+    const conflicts = (plan.conflicts || []).map(item => `${item.kind}/${item.id}`).join('、');
+    preview.textContent = `可新增 ${plan.total_new || 0} 个，冲突 ${plan.total_conflicts || 0} 个${conflicts ? `：${conflicts}` : ''}`;
+    applyButton.disabled = false;
+  } catch (error) { preview.textContent = `无法读取备份：${error.message}`; }
+}
+
+async function applyCredentialImport() {
+  if (!pendingCredentialBundle) return;
+  const conflict = value('credentialConflict') || 'skip';
+  const warning = conflict === 'overwrite' ? '将使用备份覆盖同 ID 凭证。确定继续？' : '将导入新凭证并跳过同 ID 项。确定继续？';
+  if (!confirm(warning)) return;
+  const button = document.getElementById('credentialImportApply');
+  button.disabled = true;
+  try {
+    const response = await api('POST', '/api/credentials/import', { bundle: pendingCredentialBundle, action: 'apply', conflict });
+    const result = response.result || {};
+    pendingCredentialBundle = null; closeModal(); await loadCredentials();
+    toast(`恢复完成 · 新增 ${result.imported || 0} · 覆盖 ${result.overwritten || 0} · 跳过 ${result.skipped || 0}`, 'success');
+  } catch (error) { toast(error.message, 'error'); button.disabled = false; }
 }
 
 function openCredentialModal(kind, id = '') {
@@ -565,8 +629,14 @@ async function testCredential(kind, encodedId) {
   try {
     const result = await api('POST', `/api/credentials/${kind}/${encodeURIComponent(id)}/test`);
     const latency = Number.isFinite(result.latency_ms) ? result.latency_ms : Math.round(performance.now() - started);
-    state.tests[key] = { ok: true, message: `连接成功 · ${result.model} · ${latency} ms` };
-  } catch (error) { state.tests[key] = { ok: false, message: `连接失败 · ${error.message}` }; }
+    const stageLabels = { local: '本地', oauth: 'OAuth', control_plane: '控制面', inference: '推理' };
+    const stages = (result.health?.stages || []).map(stage => stageLabels[stage.name] || stage.name).join(' → ');
+    state.tests[key] = { ok: true, message: `检查通过 · ${stages || result.model} · ${latency} ms` };
+  } catch (error) {
+    const stageLabels = { local: '本地', oauth: 'OAuth', control_plane: '控制面', inference: '推理' };
+    const failedStage = error.data?.error?.stage;
+    state.tests[key] = { ok: false, message: `检查失败${failedStage ? `（${stageLabels[failedStage] || failedStage}）` : ''} · ${error.message}` };
+  }
   finally { state.busy.delete(key); renderCredentials(); }
 }
 

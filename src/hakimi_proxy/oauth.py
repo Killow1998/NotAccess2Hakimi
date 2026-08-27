@@ -60,6 +60,7 @@ class _OAuthSession:
     processing: bool = False
     credential_id: str = ""
     account: str = ""
+    mode: str = "local"
 
 
 class _CallbackServer(ThreadingHTTPServer):
@@ -112,7 +113,9 @@ class AntigravityOAuthManager:
         self._session: _OAuthSession | None = None
         self._server: _CallbackServer | None = None
 
-    def start(self) -> dict[str, object]:
+    def start(self, mode: str = "remote") -> dict[str, object]:
+        if mode not in {"local", "remote"}:
+            raise ValueError("OAuth mode must be 'local' or 'remote'")
         now = time.time()
         with self._lock:
             if not self.client_secret:
@@ -120,12 +123,20 @@ class AntigravityOAuthManager:
                     "Antigravity OAuth client secret is not configured; set "
                     "HAKIMI_ANTIGRAVITY_CLIENT_SECRET or keep one existing account"
                 )
-            if self._session and self._session.expires_at > now and self._session.status in {"pending", "processing"}:
+            if (
+                self._session
+                and self._session.mode == mode
+                and self._session.expires_at > now
+                and self._session.status in {"pending", "processing"}
+            ):
                 return self._public_session(self._session)
             self._stop_server_locked()
             state = secrets.token_urlsafe(32)
-            server = _CallbackServer(("127.0.0.1", self.callback_port), self._handler_type())
-            port = int(server.server_address[1])
+            server: _CallbackServer | None = None
+            port = self.callback_port
+            if mode == "local":
+                server = _CallbackServer(("127.0.0.1", self.callback_port), self._handler_type())
+                port = int(server.server_address[1])
             redirect_uri = f"http://localhost:{port}/oauth-callback"
             authorization_url = _authorization_url(state, redirect_uri, self.client_id)
             session = _OAuthSession(
@@ -134,11 +145,13 @@ class AntigravityOAuthManager:
                 authorization_url=authorization_url,
                 created_at=now,
                 expires_at=now + SESSION_TTL_SECONDS,
+                mode=mode,
             )
             self._session = session
             self._server = server
-            thread = threading.Thread(target=server.serve_forever, name="antigravity-oauth", daemon=True)
-            thread.start()
+            if server is not None:
+                thread = threading.Thread(target=server.serve_forever, name="antigravity-oauth", daemon=True)
+                thread.start()
             return self._public_session(session)
 
     def _handler_type(self):
@@ -257,6 +270,7 @@ class AntigravityOAuthManager:
             "state": session.state,
             "authorization_url": session.authorization_url,
             "redirect_uri": session.redirect_uri,
+            "mode": session.mode,
             "expires_in": max(0, int(session.expires_at - time.time())),
         }
 

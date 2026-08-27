@@ -2,7 +2,7 @@
 
 OpenAI-compatible Gemini proxy with account pooling and built-in traffic metering.
 
-> Current release: **v0.2.1** — reliable Codex tool-history replay and readable upstream errors.
+> Current release: **v0.3.0** — server-safe OAuth, credential portability, and layered account health.
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
@@ -27,6 +27,10 @@ tokscale-style token cost estimation.
 - **Capability discovery**: `/v1/models` advertises verified context/output
   limits, reasoning levels, modalities, protocols, and provenance for EMP and
   other generic OpenAI clients without guessing unknown values.
+- **Portable credentials**: preview and restore a versioned credentials-only
+  backup over loopback or HTTPS without copying runtime access tokens.
+- **Layered health**: one manual account check distinguishes OAuth,
+  Antigravity control-plane, and real inference failures without background polling.
 
 ## Quick Start
 
@@ -95,7 +99,7 @@ alias `antigravity/gemini-3.7-flash` and forwards it as
 `gemini-3.7-flash-tiered`; `gemini-3.6-flash-high` is a separate catalog model,
 not an automatic alias for 3.7.
 
-### v0.2.1 boundary
+### v0.3.0 boundary
 
 This release targets a trusted local operator and one Uvicorn worker. Each
 credential allows one in-flight request, with a bounded wait and upstream
@@ -131,7 +135,14 @@ Credential edit forms never echo secrets. Leave a secret field blank to keep the
 stored value; enter a new value only when rotating it. The credential list
 returns `*_set` metadata instead of secret fragments. `可调度`/`active` means the
 credential is locally eligible for selection, not that a remote connection test
-has succeeded; use the row-level **Test** action for that check.
+has succeeded; use the row-level **检查** action for an OAuth → control-plane →
+inference check. It runs only when clicked and does not poll Google in the background.
+
+The **凭证迁移** action exports a sensitive, versioned JSON backup and previews
+new/conflicting IDs before restore. It includes long-lived API keys and refresh
+tokens, but excludes access tokens, proxy settings, downstream Bearer auth, and
+usage data. The endpoint refuses secret transfer over remote plaintext HTTP;
+store the downloaded file as carefully as the original config.
 
 If `auth_token` is set, the UI shows a login screen. Otherwise it's open access.
 
@@ -185,7 +196,9 @@ coordination or quota accounting is implied.
 | `/api/credentials/antigravity/oauth/start` | POST | Start local/remote browser OAuth |
 | `/api/credentials/antigravity/oauth/status/{state}` | GET | Poll the OAuth login |
 | `/api/credentials/antigravity/oauth/complete` | POST | Submit a copied callback URL or one-time OAuth code |
-| `/api/credentials/{kind}/{id}/test` | POST | Test one exact credential and return latency/error type |
+| `/api/credentials/export` | GET | Download a credentials-only backup (HTTPS/loopback only) |
+| `/api/credentials/import` | POST | Preview/apply a credential restore (HTTPS/loopback only) |
+| `/api/credentials/{kind}/{id}/test` | POST | Check one credential and return stage/latency/error type |
 | `/api/usage/summary` | GET | Aggregated usage stats |
 
 ## Configuration
@@ -199,13 +212,14 @@ Configure API keys only for projects and accounts you are authorized to use.
 ### Antigravity (OAuth mode)
 
 The Web UI's **+ Antigravity 登录** button is the recommended path. It opens a
-Google consent page and listens on the local callback port `51121`; on a remote
-server, copy the authorization URL to any Chrome, then paste the complete
-`localhost/.../oauth-callback?code=...&state=...` URL (or the one-time code) back
-into the dialog. Hakimi validates the session state, exchanges the code, and
-stores the account and tokens in the mode-0600 local config. Refresh tokens are
-never entered into the remote form. Manual fields remain available as a
-fallback for headless setups. When `project` is empty, Hakimi discovers it with
+Google consent page. When the console is opened through localhost it attempts
+an automatic callback on `127.0.0.1:51121`; when opened through a domain or IP,
+it starts a listener-free flow suitable for a remote server. Complete Google
+login in any Chrome, then paste the full
+`localhost/.../oauth-callback?code=...&state=...` URL (or one-time code) into
+the dialog. Hakimi validates the session state, exchanges the code, and stores
+the account and tokens in the mode-0600 local config. Manual fields remain a
+headless fallback. When `project` is empty, Hakimi discovers it with
 `loadCodeAssist`. `onboardUser` changes account state and is disabled unless
 that credential explicitly sets `auto_onboard: true`. Cloud Code API endpoints
 are tried in fallback order (daily -> prod).
@@ -225,6 +239,20 @@ those cases the UI reports that browser authorization is required again.
 `config.yaml` and `config.local.yaml` are ignored by Git and saved with mode
 `0600`; never commit access tokens, refresh tokens, or client secrets. Treat
 credentials exposed in chat or obtained from a third party as compromised.
+
+### Server deployment
+
+Keep NA2H bound to loopback and place an HTTPS reverse proxy such as Caddy or
+Nginx in front of it. Set a strong `auth_token`, restrict the upstream port with
+a firewall, and make the proxy pass the original HTTPS scheme so FastAPI sees
+`request.url.scheme == "https"`. Do not expose port `51121`; remote OAuth mode
+does not bind it.
+
+Opening the console through its HTTPS domain automatically selects the
+listener-free OAuth flow. Credential import/export is rejected unless the
+request is genuine loopback traffic or reaches NA2H as HTTPS. Directly binding
+NA2H to `0.0.0.0` over plaintext HTTP is not a supported secret-management
+deployment.
 
 ### Upstream Proxy
 
@@ -271,6 +299,7 @@ and `git diff --check`.
 src/hakimi_proxy/
   config.py          # YAML config loading + dataclasses
   model_catalog.py   # Shared model IDs + verified discovery metadata
+  credential_bundle.py # Versioned credential backup/restore validation
   diagnostics.py     # Private bounded operational JSONL journal
   oauth.py           # Local/remote browser OAuth callback + token exchange
   auth.py            # Bearer token middleware

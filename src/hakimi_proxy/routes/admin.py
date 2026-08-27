@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import ipaddress
 import re
 import time
+from typing import Any, Literal
 
 import httpx
 from fastapi import APIRouter, Request
@@ -18,8 +20,15 @@ from hakimi_proxy.config import (
     load_config,
     save_config,
 )
+from hakimi_proxy.credential_bundle import (
+    CredentialBundleError,
+    build_credential_bundle,
+    merge_credential_bundle,
+    parse_credential_bundle,
+    plan_credential_import,
+)
 from hakimi_proxy.pool import CredentialPool
-from hakimi_proxy.errors import classify_exception, classify_response
+from hakimi_proxy.errors import UpstreamError, classify_exception, classify_response
 from hakimi_proxy.proxy import configure_proxy_environment
 from hakimi_proxy.oauth import AntigravityOAuthManager, exchange_oauth_code
 
@@ -69,6 +78,16 @@ class AntigravityOAuthCompleteIn(BaseModel):
     state: str
     callback_url: str = ""
     code: str = ""
+
+
+class AntigravityOAuthStartIn(BaseModel):
+    mode: Literal["local", "remote"] = "remote"
+
+
+class CredentialImportIn(BaseModel):
+    bundle: dict[str, Any]
+    action: Literal["preview", "apply"] = "preview"
+    conflict: Literal["skip", "overwrite"] = "skip"
 
 
 class SettingsIn(BaseModel):
@@ -144,6 +163,29 @@ def _load_and_save(request: Request, config) -> None:
     _reload_pool(request, config)
 
 
+def _secret_transport_allowed(request: Request) -> bool:
+    """Allow secret transfer only over HTTPS or a genuine loopback request."""
+    if request.url.scheme == "https":
+        return True
+    hostname = (request.url.hostname or "").strip("[]").lower()
+    client_host = request.client.host if request.client else ""
+    try:
+        client_is_loopback = ipaddress.ip_address(client_host).is_loopback
+    except ValueError:
+        client_is_loopback = False
+    return hostname in {"localhost", "127.0.0.1", "::1"} and client_is_loopback
+
+
+def _secret_transport_error() -> JSONResponse:
+    return JSONResponse(
+        status_code=403,
+        content={"error": {
+            "type": "secure_transport_required",
+            "message": "Credential import/export requires HTTPS or loopback access",
+        }},
+    )
+
+
 # --- Settings ---
 
 @router.get("/config")
@@ -183,6 +225,60 @@ async def update_settings(settings: SettingsIn, request: Request):
 
 
 # --- AI Studio credentials ---
+
+@router.get("/credentials/export")
+async def export_credentials(request: Request):
+    if not _secret_transport_allowed(request):
+        return _secret_transport_error()
+    return JSONResponse(
+        content=build_credential_bundle(request.app.state.config),
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": 'attachment; filename="na2h-credentials.json"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.post("/credentials/import")
+async def import_credentials(payload: CredentialImportIn, request: Request):
+    if not _secret_transport_allowed(request):
+        return _secret_transport_error()
+    try:
+        bundle = parse_credential_bundle(payload.bundle)
+    except CredentialBundleError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"error": {"type": "invalid_credential_bundle", "message": str(exc)}},
+        )
+
+    plan = plan_credential_import(request.app.state.config, bundle)
+    if payload.action == "preview":
+        return {"status": "preview", "plan": plan}
+
+    config = request.app.state.config
+    old_aistudio = config.aistudio_credentials
+    old_antigravity = config.antigravity_credentials
+    aistudio, antigravity, result = merge_credential_bundle(
+        config,
+        bundle,
+        conflict=payload.conflict,
+    )
+    config.aistudio_credentials = aistudio
+    config.antigravity_credentials = antigravity
+    try:
+        _load_and_save(request, config)
+    except Exception:
+        config.aistudio_credentials = old_aistudio
+        config.antigravity_credentials = old_antigravity
+        raise
+    logger.info(
+        "Credential bundle imported: %s new, %s overwritten, %s skipped",
+        result["imported"],
+        result["overwritten"],
+        result["skipped"],
+    )
+    return {"status": "ok", "plan": plan, "result": result}
 
 @router.post("/credentials/aistudio")
 async def add_aistudio(cred: AIStudioCredIn, request: Request):
@@ -255,9 +351,12 @@ def _oauth_credential_id(config, account: str) -> str:
 
 
 @router.post("/credentials/antigravity/oauth/start")
-async def start_antigravity_oauth(request: Request):
+async def start_antigravity_oauth(
+    request: Request,
+    payload: AntigravityOAuthStartIn | None = None,
+):
     try:
-        return _oauth_manager(request).start()
+        return _oauth_manager(request).start(mode=payload.mode if payload else "remote")
     except (OSError, RuntimeError) as exc:
         logger.warning("Antigravity OAuth callback listener unavailable: %s", exc)
         return JSONResponse(
@@ -473,7 +572,37 @@ async def test_credential(kind: str, cred_id: str, request: Request):
     client = httpx.AsyncClient(proxy=proxy_url) if proxy_url else httpx.AsyncClient()
     response = None
     started = time.perf_counter()
+    health_stages: list[dict[str, object]] = [
+        {"name": "local", "status": "ok", "latency_ms": 0},
+    ]
+    failed_stage = "inference"
+    stage_started = started
     try:
+        if kind == "antigravity":
+            failed_stage = "oauth"
+            stage_started = time.perf_counter()
+            await adapter.refresh_credential(credential)
+            health_stages.append({
+                "name": "oauth",
+                "status": "ok",
+                "latency_ms": round((time.perf_counter() - stage_started) * 1000),
+            })
+
+            failed_stage = "control_plane"
+            stage_started = time.perf_counter()
+            response = await adapter.check_control_plane(credential, client)
+            if response.status_code != 200:
+                raise UpstreamError(classify_response(response))
+            health_stages.append({
+                "name": "control_plane",
+                "status": "ok",
+                "latency_ms": round((time.perf_counter() - stage_started) * 1000),
+            })
+            await response.aclose()
+            response = None
+
+        failed_stage = "inference"
+        stage_started = time.perf_counter()
         response = await adapter.forward(
             {
                 "model": model,
@@ -485,21 +614,12 @@ async def test_credential(kind: str, cred_id: str, request: Request):
             client,
         )
         if response.status_code != 200:
-            failure = classify_response(response)
-            credential.last_tested_at = time.time()
-            credential.last_test_ok = False
-            pool.mark_failure(credential, failure.type, failure.message, latency_ms=round((time.perf_counter() - started) * 1000), model=model)
-            if failure.credential_action == "cooldown":
-                pool.mark_cooldown(credential, failure.retry_after)
-            elif failure.credential_action == "disable":
-                pool.mark_disabled(credential)
-            return JSONResponse(
-                status_code=502,
-                content={
-                    "error": failure.public(),
-                    "latency_ms": round((time.perf_counter() - started) * 1000),
-                },
-            )
+            raise UpstreamError(classify_response(response))
+        health_stages.append({
+            "name": "inference",
+            "status": "ok",
+            "latency_ms": round((time.perf_counter() - stage_started) * 1000),
+        })
         credential.last_tested_at = time.time()
         credential.last_test_ok = True
         pool.mark_success(credential, latency_ms=round((time.perf_counter() - started) * 1000), model=model)
@@ -509,6 +629,7 @@ async def test_credential(kind: str, cred_id: str, request: Request):
             "provider": kind,
             "model": model,
             "latency_ms": round((time.perf_counter() - started) * 1000),
+            "health": {"status": "healthy", "stages": health_stages},
         }
     except Exception as exc:
         failure = classify_exception(exc)
@@ -520,11 +641,20 @@ async def test_credential(kind: str, cred_id: str, request: Request):
             pool.mark_cooldown(credential, failure.retry_after)
         elif failure.credential_action == "disable":
             pool.mark_disabled(credential)
+        if not health_stages or health_stages[-1].get("name") != failed_stage:
+            health_stages.append({
+                "name": failed_stage,
+                "status": "error",
+                "latency_ms": round((time.perf_counter() - stage_started) * 1000),
+            })
+        error = failure.public()
+        error["stage"] = failed_stage
         return JSONResponse(
             status_code=502,
             content={
-                "error": failure.public(),
+                "error": error,
                 "latency_ms": round((time.perf_counter() - started) * 1000),
+                "health": {"status": "unhealthy", "stages": health_stages},
             },
         )
     finally:

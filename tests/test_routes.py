@@ -67,6 +67,13 @@ async def test_authenticated_root_stays_public():
     assert 'id="modelTable"' in resp.text
     assert 'id="empBaseUrl"' in resp.text
     assert "页面不会复制或显示该 token" in resp.text
+    assert "+ Antigravity 登录" in resp.text
+    assert "const localHosts = new Set(['localhost', '127.0.0.1', '::1'])" in resp.text
+    assert "凭证迁移" in resp.text
+    assert "exportCredentials" in resp.text
+    assert "previewCredentialImport" in resp.text
+    assert "检查中…" in resp.text
+    assert "control_plane" in resp.text
 
 
 async def test_list_models():

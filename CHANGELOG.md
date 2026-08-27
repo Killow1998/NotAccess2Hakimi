@@ -2,6 +2,31 @@
 
 All notable changes to NotAccess2Hakimi are documented here.
 
+## [0.3.0] - 2026-08-27
+
+### Added
+
+- One Antigravity login action that selects local automatic callback on
+  loopback and listener-free copy/paste completion on domain or IP access.
+- Versioned credential backup/restore with preview, explicit conflict policy,
+  no-store responses, and HTTPS-or-loopback enforcement.
+- A layered manual account check covering local configuration, OAuth refresh,
+  `loadCodeAssist`, and real inference with per-stage latency/failure reporting.
+
+### Security
+
+- Credential bundles exclude short-lived access tokens, proxy settings,
+  downstream Bearer auth, runtime state, and usage records.
+- Remote plaintext HTTP cannot use credential import/export, and no background
+  OAuth keepalive, generation probe, or quota polling was added.
+
+### Verified
+
+- Added socket-free remote OAuth, bundle validation/round-trip, transport,
+  conflict, staged health, and control-plane failure regressions.
+- Passed a live authorized Antigravity check across local configuration, OAuth
+  refresh, `loadCodeAssist`, and real inference.
+
 ## [0.2.1] - 2026-08-27
 
 ### Fixed

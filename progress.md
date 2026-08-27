@@ -389,3 +389,67 @@
   image input, context compaction, resume, multiple `exec` calls, and a final
   directory-listing plus README tool loop. The only aborted event preceded the
   fix and was explicitly user-triggered.
+
+## Phase 31 start (2026-08-27)
+
+- Selected a server-portability vertical slice: listener-free remote OAuth,
+  versioned credential migration, and layered AGY health.
+- Applied the landing cut: no multi-user/multi-worker session store, no
+  background Google polling, no quota prediction, and no deployment framework
+  in this iteration.
+- Acceptance requires remote OAuth start without a socket bind, safe
+  export-preview-import behavior, and health stages that do not confuse token,
+  control-plane, and inference availability.
+- The planning catch-up helper could not acquire a lock in the read-only home
+  uv cache on its first run; the next attempt uses the existing task cache
+  under `/tmp` rather than changing project dependencies.
+- The catch-up helper completed with the task cache and reported no additional
+  unsynchronized context.
+- Inspected the current OAuth manager, admin route, tests, and Web UI. Remote
+  and local completion already share safe state/code exchange; the faulty
+  responsibility is limited to `start()` unconditionally creating a listener.
+- Completed Phase 31: one Web UI login action selects local mode for loopback
+  browser hosts and remote mode for domain/IP hosts. Remote mode never creates
+  `_CallbackServer`; local callback, manual URL fallback, state validation, and
+  token exchange are unchanged.
+- Phase 31 verification: 42 OAuth/admin/route tests passed and the inline Web
+  UI JavaScript parsed successfully.
+- Added failing portability regressions, then implemented a versioned bundle
+  parser/exporter, conflict planning/merge, secure-transport enforcement, and
+  preview/apply admin endpoints. Five focused data/API tests now pass.
+- Added a Web UI acceptance assertion for the migration workflow; it is red
+  until the single migration modal and handlers are implemented.
+- Completed Phase 32 with one “凭证迁移” modal. Export is explicitly marked
+  sensitive; import stays in memory, previews only IDs/counts, and applies only
+  after a skip/overwrite confirmation.
+- Phase 32 verification: 28 bundle/admin/route tests passed and the inline Web
+  UI JavaScript parsed successfully.
+- Inspected the AGY adapter and existing credential Test lifecycle. Health will
+  extend that leased/manual action with OAuth and control-plane stages rather
+  than create polling, another UI button, or a second runtime state machine.
+- Added staged health regressions and implementation. The first broader run
+  exposed two legacy inference-error fixtures that now reached real preflight;
+  their OAuth/control-plane stages are stubbed so timeout/429 assertions retain
+  their original boundary.
+- Focused staged-health tests now pass, including a control-plane 403 that
+  prevents inference and reports `control_plane`. The repaired broader
+  admin/adapter run passes 54 tests.
+
+## Phase 31-33 implementation completion (2026-08-27)
+
+- Kept one Antigravity login action. Loopback Web UI access automatically uses
+  the local callback listener; domain/IP access uses the listener-free manual
+  completion path without binding port 51121.
+- Added a versioned credentials-only export/import flow with preview and
+  explicit skip/overwrite conflict handling. Remote plaintext HTTP is rejected;
+  access tokens, proxy settings, downstream auth, runtime state, and usage data
+  are excluded.
+- Upgraded the existing per-account check into local, OAuth, control-plane, and
+  inference stages. It remains manual and creates no refresh/generation polling.
+- Updated package, lockfile, application version, README, and changelog to
+  `0.3.0`.
+- Final automated verification: 141 tests passed; Python compileall, `uv lock
+  --check`, inline Web UI JavaScript parsing, and `git diff --check` all passed.
+- Post-restart live Antigravity acceptance passed in 13,668 ms across local,
+  OAuth refresh, `loadCodeAssist` control-plane, and real inference stages.
+  Automated tests themselves still generate no real account traffic.

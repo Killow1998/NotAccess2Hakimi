@@ -522,6 +522,30 @@ async def test_antigravity_onboarding_requires_opt_in():
 
 
 @pytest.mark.asyncio
+async def test_antigravity_control_plane_health_updates_discovered_project():
+    updates = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == LOAD_CODE_ASSIST_URL
+        assert request.headers["authorization"] == "Bearer token"
+        return httpx.Response(
+            200,
+            request=request,
+            json={"cloudaicompanionProject": "discovered-project"},
+        )
+
+    cred = _make_ag_cred()
+    cred.credential.access_token = "token"
+    adapter = AntigravityAdapter(on_credential_update=lambda: updates.append(True))
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        response = await adapter.check_control_plane(cred, client)
+
+    assert response.status_code == 200
+    assert cred.credential.project == "discovered-project"
+    assert updates == [True]
+
+
+@pytest.mark.asyncio
 async def test_antigravity_onboards_when_explicitly_enabled(monkeypatch):
     calls = []
 
