@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
+from hakimi_proxy import __version__
 from hakimi_proxy.adapters.aistudio import AIStudioAdapter
 from hakimi_proxy.adapters.antigravity import AntigravityAdapter
 from hakimi_proxy.auth import BearerAuthMiddleware
 from hakimi_proxy.config import get_config_path, load_config_from_env, save_config
+from hakimi_proxy.diagnostics import DiagnosticJournal
 from hakimi_proxy.metering.pricing import load_custom_pricing
 from hakimi_proxy.metering.store import UsageStore
 from hakimi_proxy.oauth import AntigravityOAuthManager
@@ -45,7 +48,7 @@ def create_app() -> FastAPI:
     # Load custom pricing overrides if present
     load_custom_pricing("pricing.yaml")
 
-    app = FastAPI(title="hakimi-proxy", version="0.1.0", lifespan=_lifespan)
+    app = FastAPI(title="hakimi-proxy", version=__version__, lifespan=_lifespan)
 
     # Auth middleware
     app.add_middleware(BearerAuthMiddleware, auth_token=config.auth_token)
@@ -79,6 +82,47 @@ def create_app() -> FastAPI:
     app.state.max_retries = config.max_retries
     app.state.config = config
     app.state.proxy_source = proxy_source
+    app.state.diagnostics = DiagnosticJournal()
+    app.state.diagnostics.record(
+        "application_configured",
+        version=__version__,
+        proxy_source=proxy_source,
+        aistudio_credentials=len(config.aistudio_credentials),
+        antigravity_credentials=len(config.antigravity_credentials),
+        total_credentials=len(pool.all_credentials),
+    )
+
+    @app.middleware("http")
+    async def record_request_diagnostic(request, call_next):
+        started = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            app.state.diagnostics.record(
+                "http_request",
+                level="error",
+                method=request.method,
+                route="<unmatched>",
+                status=500,
+                duration_ms=round((time.perf_counter() - started) * 1000),
+            )
+            raise
+
+        route = request.scope.get("route")
+        route_path = getattr(route, "path", "<unmatched>")
+        should_record = route_path.startswith("/v1/") or (
+            request.method != "GET" and route_path.startswith("/api/")
+        )
+        if should_record:
+            app.state.diagnostics.record(
+                "http_request",
+                level="warning" if response.status_code >= 400 else "info",
+                method=request.method,
+                route=route_path,
+                status=response.status_code,
+                duration_ms=round((time.perf_counter() - started) * 1000),
+            )
+        return response
 
     # Register routes
     app.include_router(chat.router)
@@ -105,6 +149,10 @@ def create_app() -> FastAPI:
             "total_credentials": len(pool.all_credentials),
             "in_flight_requests": sum(item["in_flight"] for item in status),
             "proxy_source": app.state.proxy_source,
+            "diagnostics": {
+                "enabled": app.state.diagnostics.enabled,
+                "path": app.state.diagnostics.display_path,
+            },
         }
 
     return app
@@ -114,16 +162,15 @@ app = create_app()
 
 
 def main():
-    """Run the server with uvicorn."""
+    """Run the stable server; development reload is an explicit uvicorn command."""
     import uvicorn
 
-    config = load_config_from_env()
+    config = app.state.config
     uvicorn.run(
-        "hakimi_proxy.main:app",
+        app,
         host=config.host,
         port=config.port,
         log_level="info",
-        reload=True,
     )
 
 

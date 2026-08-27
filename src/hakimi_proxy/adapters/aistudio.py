@@ -13,22 +13,15 @@ import httpx
 
 from hakimi_proxy.adapters.base import UpstreamAdapter
 from hakimi_proxy.config import AIStudioCredential
+from hakimi_proxy.model_catalog import AISTUDIO_MODELS
 from hakimi_proxy.pool import PooledCredential
 
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
 
-# Models that the AI Studio free tier can serve
-SUPPORTED_MODELS: set[str] = {
-    "gemini-3.7-flash",
-    "gemini-3.5-flash",
-    "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
-    "gemini-3.1-flash-lite-preview",
-    "gemini-3.1-pro-preview",
-    "gemini-3.6-flash",
-}
+# Backward-compatible adapter export; the catalog is the source of truth.
+SUPPORTED_MODELS = AISTUDIO_MODELS
 
 
 class AIStudioAdapter(UpstreamAdapter):

@@ -124,6 +124,38 @@ def classify_response(response: httpx.Response) -> UpstreamFailure:
     return UpstreamFailure("upstream_error", safe_message, status, False, "none", retry_after, quota_reset_at)
 
 
+async def classify_streaming_response(
+    response: httpx.Response,
+    *,
+    max_body_bytes: int = 64 * 1024,
+) -> UpstreamFailure:
+    """Buffer a bounded streamed error body before applying normal classification."""
+    try:
+        response.content
+    except httpx.ResponseNotRead:
+        body = bytearray()
+        try:
+            async for chunk in response.aiter_bytes():
+                remaining = max_body_bytes - len(body)
+                if remaining <= 0:
+                    break
+                body.extend(chunk[:remaining])
+                if len(body) >= max_body_bytes:
+                    break
+        except Exception:
+            # The HTTP status remains authoritative even if its optional error
+            # body cannot be read completely.
+            pass
+        buffered = httpx.Response(
+            response.status_code,
+            headers=response.headers,
+            content=bytes(body),
+            request=response.request,
+        )
+        return classify_response(buffered)
+    return classify_response(response)
+
+
 def classify_exception(exc: BaseException) -> UpstreamFailure:
     """Classify adapter exceptions while keeping programming errors visible."""
     if isinstance(exc, UpstreamError):

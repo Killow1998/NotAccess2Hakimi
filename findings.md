@@ -86,6 +86,11 @@
 - Keep `/v1/chat/completions` stable; `/v1/responses` is an additive facade, not a replacement.
 - EMP's custom Provider contract is `base_url` plus `protocol`; for NA2H use `protocol=responses`, `auth_mode=api_key`, and a Base URL ending in `/v1` so EMP appends `/responses`.
 - EMP's model discovery sees NA2H's raw model IDs. To force AGY when NA2H also has AI Studio credentials, set the EMP model `upstream_id` to `antigravity/gemini-3.7-flash-tiered`; EMP forwards that exact ID and NA2H's provider prefix selects AGY.
+- EMP's generic model parser already accepts provider-advertised `context_window`, `max_input_tokens`, `output_limit`, `supports_reasoning`, `reasoning_levels`, `architecture.input_modalities`, `architecture.output_modalities`, `supported_parameters`, `streaming`, and per-field `capability_sources`. NA2H should emit that contract directly instead of asking EMP to recognize a loopback URL as Google's official endpoint.
+- Normal `python -m hakimi_proxy.main` currently forces Uvicorn reload. Because Web UI credential mutations persist `config.local.yaml`, WatchFiles restarts the process and repeats initialization logs. Stable runtime and development reload must be separate commands.
+- The active local port is a user configuration fact (`config.local.yaml: port: 8000`), while `12345` is only the repository default. EMP should follow the active endpoint rather than forcing both projects to share a hard-coded port.
+- The implemented EMP contract test uses EMP v0.8.0's real generic parser, not a duplicated schema assertion. It retains the tiered model's 1,048,576 context, 65,536 output, low/medium/high reasoning, text/image input, tools, structured output, and streaming.
+- Capability discovery must describe the intersection of model and gateway behavior. NA2H therefore publishes text/image for models whose official catalog also supports audio/video until the Responses facade implements those additional input carriers.
 
 ## Technical Decisions
 
@@ -155,3 +160,24 @@
 - Phase 24 policy is fixed by user choice: one in-flight request per credential, 30-second bounded wait, single Uvicorn process, mock-only automated verification.
 - Phase 24 result: `/healthz` now reports `in_flight_requests`; `/api/credentials` and the existing single-page UI expose health, cooldown, latency, in-flight, and safe last-error fields. Runtime state is intentionally in-process and resets on restart.
 - Terminal 4xx responses fail once as `upstream_request_error`; 429/5xx and transport failures can fail over; invalid JSON and empty 2xx responses return 502-class errors instead of silent success.
+
+## Codex unsigned tool-history replay (2026-08-27)
+
+- Rollout `01a04263-fbe0-7770-9427-65f9199722ec` completed its first AGY custom
+  tool call but recorded no Responses reasoning carrier or provider signature;
+  the next request therefore replayed an unsigned Gemini `functionCall` and
+  received HTTP 400.
+- The image input was not the failing boundary: AGY accepted the first request
+  and emitted the tool call. OAuth refresh was also unrelated because the
+  request reached `streamGenerateContent` and received an application response.
+- Current CPA sanitizes synthetic Gemini history by adding
+  `skip_thought_signature_validator` only to the first unsigned function call
+  in each model turn. Native signatures are preserved and later parallel calls
+  remain unsigned. NA2H now applies the same narrow rule during conversion.
+- NA2H separately tried to call `.json()` on an unread streaming response, so
+  `httpx.ResponseNotRead` hid the real upstream 400 and became a local 500.
+  Streamed error bodies are now buffered up to 64 KiB before classification.
+- Post-fix live acceptance completed model switching, image input, compaction,
+  resume, repeated custom-tool calls, tool outputs, and a final `ls + README`
+  task without a protocol error. This validates the full
+  Codex-to-EMP-to-NA2H-to-Antigravity round trip, not only an adapter unit test.

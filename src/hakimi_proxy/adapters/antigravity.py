@@ -25,6 +25,7 @@ import httpx
 from hakimi_proxy.adapters.base import UpstreamAdapter
 from hakimi_proxy.config import AntigravityCredential
 from hakimi_proxy.errors import UpstreamError, UpstreamFailure, classify_response
+from hakimi_proxy.model_catalog import ANTIGRAVITY_MODELS, resolve_antigravity_model
 from hakimi_proxy.pool import PooledCredential
 
 logger = logging.getLogger(__name__)
@@ -49,34 +50,13 @@ ANTIGRAVITY_HEADERS = {
     "x-goog-api-client": "gl-node/18.18.2 fire/0.8.6 grpc/1.10.x",
 }
 
-SUPPORTED_MODELS: set[str] = {
-    # The current catalog exposes 3.7 as the tiered model. Keep the
-    # product-facing name as an explicit local alias below.
-    "gemini-3.7-flash",
-    "gemini-3.7-flash-tiered",
-    "gemini-3.5-flash",
-    "gemini-3.5-flash-extra-low",
-    "gemini-3.5-flash-low",
-    "gemini-3.1-pro-preview",
-    "gemini-3.6-flash",
-    "gemini-3.6-flash-high",
-    "gemini-3.6-flash-medium",
-    "gemini-3.6-flash-low",
-    "gemini-3.6-flash-tiered",
-    "gemini-3-flash-agent",
-    "gemini-2.5-pro",
-    "gemini-2.5-flash",
-}
-
-ANTIGRAVITY_MODEL_ALIASES = {
-    "gemini-3.7-flash": "gemini-3.7-flash-tiered",
-}
+# Backward-compatible adapter export; the catalog is the source of truth.
+SUPPORTED_MODELS = ANTIGRAVITY_MODELS
 
 
 def _resolve_model_name(model: str) -> str:
     """Resolve only catalog-confirmed display aliases before forwarding."""
-    normalized = model.strip().lower()
-    return ANTIGRAVITY_MODEL_ALIASES.get(normalized, normalized)
+    return resolve_antigravity_model(model)
 
 
 def _json_object(value) -> dict:
@@ -125,6 +105,9 @@ def _content_parts(content) -> list[dict]:
     return parts
 
 
+THOUGHT_SIGNATURE_REPLAY_MARKER = "skip_thought_signature_validator"
+
+
 def _openai_to_gemini(body: dict) -> dict:
     """Convert an OpenAI Chat Completions request to Gemini format."""
     contents: list[dict] = []
@@ -156,7 +139,7 @@ def _openai_to_gemini(body: dict) -> dict:
         flush_tool_parts()
         parts = _content_parts(msg.get("content"))
         if role == "assistant":
-            for call in msg.get("tool_calls", []):
+            for call_index, call in enumerate(msg.get("tool_calls", [])):
                 function = call.get("function", {})
                 name = function.get("name", "unknown")
                 if call.get("id"):
@@ -171,6 +154,10 @@ def _openai_to_gemini(body: dict) -> dict:
                 signature = call.get("extra_content", {}).get("google", {}).get("thought_signature")
                 if signature:
                     part["thoughtSignature"] = signature
+                elif call_index == 0:
+                    # Gemini accepts this marker for synthetic or migrated tool
+                    # history when the original thought signature is unavailable.
+                    part["thoughtSignature"] = THOUGHT_SIGNATURE_REPLAY_MARKER
                 parts.append(part)
             contents.append({"role": "model", "parts": parts or [{"text": ""}]})
         else:

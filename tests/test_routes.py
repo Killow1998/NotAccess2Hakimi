@@ -49,6 +49,8 @@ async def test_healthz():
     assert data["total_credentials"] == 1
     assert data["in_flight_requests"] == 0
     assert data["proxy_source"] in {"config", "environment", "system", "direct"}
+    assert data["diagnostics"]["path"] == "state/diagnostics.jsonl"
+    assert isinstance(data["diagnostics"]["enabled"], bool)
 
 
 async def test_authenticated_root_stays_public():
@@ -62,6 +64,9 @@ async def test_authenticated_root_stays_public():
 
     assert resp.status_code == 200
     assert 'id="loginView"' in resp.text
+    assert 'id="modelTable"' in resp.text
+    assert 'id="empBaseUrl"' in resp.text
+    assert "页面不会复制或显示该 token" in resp.text
 
 
 async def test_list_models():
@@ -72,6 +77,29 @@ async def test_list_models():
     assert data["object"] == "list"
     model_ids = [m["id"] for m in data["data"]]
     assert "gemini-3.7-flash" in model_ids
+    tiered = next(m for m in data["data"] if m["id"] == "gemini-3.7-flash-tiered")
+    assert tiered["context_window"] == 1_048_576
+    assert tiered["max_input_tokens"] == 1_048_576
+    assert tiered["output_limit"] == 65_536
+    assert tiered["reasoning_levels"] == ["low", "medium", "high"]
+    assert tiered["architecture"]["input_modalities"] == ["text", "image"]
+    assert tiered["architecture"]["output_modalities"] == ["text"]
+    assert tiered["streaming"] is True
+    assert "tools" in tiered["supported_parameters"]
+    assert "response_format" in tiered["supported_parameters"]
+    assert tiered["supported_protocols"] == ["responses", "chat_completions"]
+    assert tiered["capability_sources"]["context_window"]["source"] == "observed"
+
+
+async def test_get_model_returns_catalog_entry_or_404():
+    app = _make_app_with_state()
+    resp = await _request(app, "GET", "/v1/models/gemini-3.7-flash-tiered")
+    assert resp.status_code == 200
+    assert resp.json()["context_window"] == 1_048_576
+
+    missing = await _request(app, "GET", "/v1/models/not-a-model")
+    assert missing.status_code == 404
+    assert missing.json()["error"]["type"] == "not_found_error"
 
 
 async def test_credentials_status():
@@ -211,6 +239,35 @@ async def test_chat_terminal_400_is_not_retried(monkeypatch):
     assert response.status_code == 502
     assert response.json()["error"]["type"] == "upstream_request_error"
     assert calls == 1
+
+
+async def test_chat_streaming_400_body_is_classified_before_close(monkeypatch):
+    app = _make_app_with_state()
+
+    class ErrorStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b'{"error":{"status":"INVALID_ARGUMENT","message":"missing thought signature"}}'
+
+    async def fake_forward(body, cred, stream, client):
+        assert stream is True
+        return httpx.Response(
+            400,
+            request=httpx.Request("POST", "https://upstream.test"),
+            stream=ErrorStream(),
+        )
+
+    monkeypatch.setattr(app.state.aistudio, "forward", fake_forward)
+    response = await _request(app, "POST", "/v1/chat/completions", json={
+        "model": "gemini-3.7-flash",
+        "messages": [{"role": "user", "content": "hello"}],
+        "stream": True,
+    })
+
+    assert response.status_code == 502
+    error = response.json()["error"]
+    assert error["type"] == "upstream_request_error"
+    assert error["upstream_status"] == 400
+    assert error["message"] == "INVALID_ARGUMENT: missing thought signature"
 
 
 async def test_chat_429_fails_over_to_another_credential(monkeypatch):

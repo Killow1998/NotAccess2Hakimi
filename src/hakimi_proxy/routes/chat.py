@@ -20,7 +20,7 @@ from hakimi_proxy.errors import (
     UpstreamFailure,
     UpstreamError,
     classify_exception,
-    classify_response,
+    classify_streaming_response,
 )
 from hakimi_proxy.metering.models import UsageRecord
 from hakimi_proxy.metering.pricing import compute_cost_for_model
@@ -99,7 +99,7 @@ async def _run_chat_completion(request: Request, body: dict):
         try:
             resp = await adapter.forward(body, cred, stream, client)
             if resp.status_code != 200:
-                failure = classify_response(resp)
+                failure = await classify_streaming_response(resp)
                 _apply_failure(pool, cred, failure, model, started)
                 last_failure = failure
                 await resp.aclose()

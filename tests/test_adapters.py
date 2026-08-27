@@ -213,6 +213,38 @@ def test_openai_to_gemini_tools_multimodal_and_signatures():
     assert result["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "low"}
 
 
+def test_openai_to_gemini_marks_first_unsigned_parallel_tool_call_as_replay():
+    """Synthetic tool history must use Gemini's documented replay marker."""
+    body = {
+        "messages": [
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call-1",
+                        "type": "function",
+                        "function": {"name": "exec", "arguments": "{}"},
+                    },
+                    {
+                        "id": "call-2",
+                        "type": "function",
+                        "function": {"name": "wait", "arguments": "{}"},
+                    },
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call-1", "content": "ok"},
+            {"role": "tool", "tool_call_id": "call-2", "content": "done"},
+        ],
+    }
+
+    result = _openai_to_gemini(body)
+    call_parts = result["contents"][0]["parts"]
+
+    assert call_parts[0]["thoughtSignature"] == "skip_thought_signature_validator"
+    assert "thoughtSignature" not in call_parts[1]
+
+
 def test_gemini_to_openai_basic():
     """Gemini response converts to OpenAI format."""
     gemini_body = {

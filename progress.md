@@ -313,3 +313,79 @@
 - Kept regular `function_call` IDs unchanged and documented the need for a
   fresh Codex session when switching provider families with old tool history.
 - Verification: Responses tests 19 passed; full suite 118 passed.
+
+## Phase 26 start (2026-08-27)
+
+- The restored account completed NA2H Web OAuth credential acquisition.
+- Confirmed the active local config intentionally overrides the code default
+  with port 8000; EMP already points Hakimi at `http://127.0.0.1:8000/v1`.
+- Confirmed EMP v0.8.0 has the Hakimi Provider enabled but no imported Hakimi
+  model, and NA2H `/v1/models` currently advertises only basic OpenAI fields.
+- Scope accepted: rich model discovery, stable startup, bounded safe logs, and
+  model/EMP integration UX, followed by offline cross-repository verification.
+- Confirmed `config.local.yaml` explicitly selects port `8000`; the application
+  default remains `12345`. No port migration is required.
+- Isolated duplicate startup behavior to `main()` forcing `reload=True` while
+  Web UI credential updates persist the watched YAML file.
+- Confirmed the generic `/v1/models` response lacks every capability field EMP
+  understands: context/output limits, reasoning levels, modalities, supported
+  parameters, streaming, and capability provenance.
+- Official-document web lookup returned no usable result twice. Capability
+  facts will use EMP's bundled official registry for direct Gemini metadata and
+  prior observed Antigravity evidence for `gemini-3.7-flash-tiered`; unknown
+  fields stay unknown.
+- A loopback curl from the managed execution namespace could not see the server
+  started in the user's terminal. Online AGY generation therefore remains the
+  user's final acceptance test instead of being treated as an application
+  outage.
+- The first Git status check ran in aggregate `/home/nuc/NA2H`, which is not a
+  repository. All later repository operations use the current NA2H checkout.
+
+## Phase 26-29 completion (2026-08-27)
+
+- Added `model_catalog.py` as the single source for AI Studio/Antigravity model
+  IDs, the AGY 3.7 alias, and generic capability discovery metadata.
+- `/v1/models` now advertises verified limits, reasoning levels, modalities,
+  tools, structured output, streaming, protocols, and provenance. Unsupported
+  or unverified model-specific limits remain absent/unknown.
+- Normal `uv run python -m hakimi_proxy.main` now starts the already-built app
+  once without a watcher. README documents a separate explicit uv-only reload
+  command that excludes config, state, and database files.
+- Added a mode-0600, allowlisted, rotating `state/diagnostics.jsonl` journal.
+  Middleware records route templates/status/timing only; tests prove query
+  values, prompts, authorization fields, and non-allowlisted data are omitted.
+- Added a responsive model capability table and EMP integration card to the
+  existing single-page UI. Copy actions include the active Base URL and a
+  Provider skeleton but never the Bearer token.
+- Bumped package/application/lockfile and release documentation to `0.2.0`.
+- Verification: 128 NA2H tests passed; Python compileall, Web UI JavaScript
+  parsing, `uv lock --check`, `git diff --check`, and changed-file secret scans
+  passed.
+- Cross-repository contract: EMP v0.8.0's actual `_generic_models()` parsed
+  `gemini-3.7-flash-tiered` as context `1048576`, output `65536`, reasoning
+  `low/medium/high`, text/image input, text output, tools, structured output,
+  and streaming.
+- No credential file, OAuth token, EMP encrypted config, commit, tag, or remote
+  repository was changed. Live AGY generation is intentionally left for the
+  operator's requested final test.
+- Process-level smoke startup with an empty temporary config showed one
+  `__main__` initialization and one Uvicorn server process on the configured
+  port, confirming the duplicate import/reload path is gone. Managed sandbox
+  TCP policy rejected loopback curl even from the same shell, so endpoint
+  behavior remains covered by the passing ASGI tests. The temporary process,
+  YAML, and SQLite file were removed afterward.
+
+## Phase 30 completion (2026-08-27)
+
+- Added a Gemini replay marker for the first unsigned tool call in synthetic
+  Responses/Chat history, matching current CPA behavior without overwriting
+  native thought signatures or signing parallel siblings.
+- Added bounded async classification for non-200 streamed upstream responses;
+  their status and safe message now survive instead of becoming a
+  `ResponseNotRead` 500.
+- Added adapter, exact Responses custom-tool, and streaming route regressions.
+- Updated release metadata to `0.2.1`.
+- Live acceptance passed in one Codex rollout across provider/model switches,
+  image input, context compaction, resume, multiple `exec` calls, and a final
+  directory-listing plus README tool loop. The only aborted event preceded the
+  fix and was explicitly user-triggered.

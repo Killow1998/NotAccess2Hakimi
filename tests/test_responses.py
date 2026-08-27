@@ -7,6 +7,7 @@ import httpx
 from httpx2 import ASGITransport, AsyncClient
 
 from hakimi_proxy.adapters.aistudio import AIStudioAdapter
+from hakimi_proxy.adapters.antigravity import _openai_to_gemini
 from hakimi_proxy.auth import BearerAuthMiddleware
 from hakimi_proxy.config import AIStudioCredential, ProxyConfig
 from hakimi_proxy.main import create_app
@@ -196,6 +197,33 @@ def test_responses_custom_tool_history_becomes_chat_tool_messages():
         "tool_call_id": "call-1",
         "content": "ok",
     }
+
+
+def test_unsigned_responses_custom_tool_history_is_valid_gemini_replay():
+    chat = responses_to_chat({
+        "model": "antigravity/gemini-3.7-flash-tiered",
+        "input": [
+            {"type": "message", "role": "user", "content": "Run it"},
+            {
+                "type": "custom_tool_call",
+                "id": "ctc_1",
+                "call_id": "call-1",
+                "name": "exec",
+                "input": "text('ok')",
+            },
+            {
+                "type": "custom_tool_call_output",
+                "call_id": "call-1",
+                "output": "ok",
+            },
+        ],
+    })
+
+    gemini = _openai_to_gemini(chat)
+
+    assert gemini["contents"][1]["parts"][0]["thoughtSignature"] == (
+        "skip_thought_signature_validator"
+    )
 
 
 def test_responses_reasoning_carrier_binds_to_next_function_call():

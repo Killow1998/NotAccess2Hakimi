@@ -2,7 +2,7 @@
 
 OpenAI-compatible Gemini proxy with account pooling and built-in traffic metering.
 
-> Current release: **v0.1.1** — Responses custom-tool compatibility patch.
+> Current release: **v0.2.1** — reliable Codex tool-history replay and readable upstream errors.
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
@@ -24,6 +24,9 @@ tokscale-style token cost estimation.
   OAuth) through a SOCKS/HTTP proxy, e.g. `socks5://127.0.0.1:1080`.
 - **Browser OAuth**: add an Antigravity account through a local or remote
   Google OAuth callback instead of copying client IDs and refresh tokens by hand.
+- **Capability discovery**: `/v1/models` advertises verified context/output
+  limits, reasoning levels, modalities, protocols, and provenance for EMP and
+  other generic OpenAI clients without guessing unknown values.
 
 ## Quick Start
 
@@ -44,6 +47,9 @@ HAKIMI_CONFIG=config.local.yaml uv run python -m hakimi_proxy.main
 Then open `http://127.0.0.1:12345` in your browser. The Web UI can add
 credentials, start Antigravity browser OAuth, run a connection test, and show
 runtime pool status; no YAML editing is required after the initial local copy.
+`12345` is the repository default; an explicit `port` in `config.local.yaml`
+wins. For example, an existing `port: 8000` configuration remains at
+`http://127.0.0.1:8000`.
 
 ### Quick smoke test
 
@@ -89,7 +95,7 @@ alias `antigravity/gemini-3.7-flash` and forwards it as
 `gemini-3.7-flash-tiered`; `gemini-3.6-flash-high` is a separate catalog model,
 not an automatic alias for 3.7.
 
-### v0.1.0 boundary
+### v0.2.1 boundary
 
 This release targets a trusted local operator and one Uvicorn worker. Each
 credential allows one in-flight request, with a bounded wait and upstream
@@ -103,7 +109,7 @@ version.
 |---|---|---|
 | `/v1/chat/completions` | POST | OpenAI-compatible chat (stream + non-stream) |
 | `/v1/responses` | POST | Codex-compatible Responses (stream + non-stream) |
-| `/v1/models` | GET | List available models |
+| `/v1/models` | GET | List models with generic capability metadata |
 | `/v1/usage` | GET | Aggregated usage by credential x model x day |
 | `/v1/usage/export` | GET | Individual usage log entries |
 | `/v1/credentials` | GET | Credential pool status |
@@ -117,8 +123,9 @@ The built-in single-page console at `/` provides:
 - service health, active credential counts, total requests/tokens/cost
 - AI Studio and Antigravity add/edit/delete cards with live state badges
 - per-credential and per-model usage breakdown
+- verified model capability summaries and copyable EMP Provider settings
 - a collapsed settings section for host, port, auth token, retry count, cooldown,
-  database path, and upstream proxy
+  database path, upstream proxy, and diagnostic journal status
 
 Credential edit forms never echo secrets. Leave a secret field blank to keep the
 stored value; enter a new value only when rotating it. The credential list
@@ -127,6 +134,26 @@ credential is locally eligible for selection, not that a remote connection test
 has succeeded; use the row-level **Test** action for that check.
 
 If `auth_token` is set, the UI shows a login screen. Otherwise it's open access.
+
+### EasyMultiProvider
+
+Add NA2H as an EMP External Provider with these values:
+
+| Field | Value |
+|---|---|
+| ID | `hakimi` |
+| Base URL | `http://127.0.0.1:<configured-port>/v1` |
+| Protocol | `responses` |
+| Auth mode | `api_key` |
+| API key | the same NA2H `auth_token` used to enter the Web UI |
+
+Save the Provider, click **拉取模型**, select
+`gemini-3.7-flash-tiered`, and import it. EMP will create
+`hakimi/gemini-3.7-flash-tiered` with the advertised 1,048,576-token context
+window, 65,536-token output limit, `low`/`medium`/`high` reasoning levels, and
+text/image input. The Web UI's **模型与 EMP 集成** section copies the active
+Base URL and a Provider JSON skeleton, but deliberately never copies the
+Bearer token.
 
 ### Reliability behavior
 
@@ -223,8 +250,15 @@ Cost is computed per-request using a five-dimensional token breakdown
 ## Development
 
 ```bash
-uv run pytest -v          # run tests
-uv run python -m hakimi_proxy.main  # dev server (auto-reload enabled)
+uv run pytest -v
+
+# Stable normal runtime (no implicit file watcher)
+HAKIMI_CONFIG=config.local.yaml uv run python -m hakimi_proxy.main
+
+# Explicit development reload; config/database changes do not restart it
+HAKIMI_CONFIG=config.local.yaml uv run uvicorn hakimi_proxy.main:app \
+  --host 127.0.0.1 --port 12345 --reload \
+  --reload-exclude config.local.yaml --reload-exclude 'state/*' --reload-exclude '*.db*'
 ```
 
 The repository uses `uv` only. Before opening a pull request or publishing a
@@ -236,6 +270,8 @@ and `git diff --check`.
 ```
 src/hakimi_proxy/
   config.py          # YAML config loading + dataclasses
+  model_catalog.py   # Shared model IDs + verified discovery metadata
+  diagnostics.py     # Private bounded operational JSONL journal
   oauth.py           # Local/remote browser OAuth callback + token exchange
   auth.py            # Bearer token middleware
   pool.py            # Credential pool state machine + LRU scheduling
@@ -257,3 +293,9 @@ src/hakimi_proxy/
     index.html       # Self-contained Web UI dashboard
   main.py            # FastAPI app factory + entry point
 ```
+
+Operational diagnostics are written to `state/diagnostics.jsonl`, mode `0600`,
+with private directories, 2 MiB parts, and four rotated backups. Records contain
+only allowlisted route templates, status codes, timings, version, and safe pool
+counts. Request bodies, prompts, headers, query strings, OAuth state, tokens,
+and credentials are never written.

@@ -2,6 +2,49 @@
 
 All notable changes to NotAccess2Hakimi are documented here.
 
+## [0.2.1] - 2026-08-27
+
+### Fixed
+
+- Mark synthetic or migrated Gemini tool history when the original thought
+  signature is unavailable, while preserving native signatures and leaving
+  later parallel calls unsigned.
+- Buffer bounded streamed error bodies before classification so upstream 400
+  details surface as a 502 request error instead of an internal
+  `ResponseNotRead` 500.
+
+### Verified
+
+- Reproduced the failing Codex session boundary and covered unsigned Responses
+  custom-tool replay, native signatures, parallel calls, and streamed 400s.
+- Completed a live authorized Codex session across model switches, compaction,
+  resume, image input, repeated custom-tool calls, and tool-result replay.
+
+## [0.2.0] - 2026-08-27
+
+### Added
+
+- Central model catalog shared by both adapters and `/v1/models`.
+- Generic capability metadata for context/output limits, reasoning levels,
+  input/output modalities, tools, structured output, streaming, protocols, and
+  per-field provenance; unknown model facts remain explicitly unknown.
+- A model catalog and EMP External Provider integration section in the existing
+  zero-build Web UI, including copy actions that never expose the Bearer token.
+- A private, allowlisted JSONL diagnostic journal with bounded rotation and
+  safe health-status reporting.
+
+### Changed
+
+- Normal `python -m hakimi_proxy.main` startup now runs the prebuilt app once
+  without implicit hot reload. Development reload is an explicit uv-only
+  Uvicorn command that excludes local config, state, and database files.
+- Application, package, and lockfile versions now report `0.2.0` consistently.
+
+### Verified
+
+- NA2H model discovery is parsed by EMP's real generic discovery implementation
+  with the Antigravity tiered context, reasoning, and modality metadata intact.
+
 ## [0.1.1] - 2026-08-20
 
 ### Fixed

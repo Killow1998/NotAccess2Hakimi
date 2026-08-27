@@ -4,7 +4,7 @@
 Keep the verified AI Studio path intact and complete the AGY adapter protocol for accounts the operator owns and is authorized to use, without storing or exercising exposed third-party credentials.
 
 ## Current Phase
-Phase 24 complete (Reliability contract: single-flight leases, error taxonomy, and stream cleanup)
+Phase 30 complete (v0.2.1 Codex tool-history replay fix)
 
 ## Phases
 
@@ -180,6 +180,47 @@ Phase 24 complete (Reliability contract: single-flight leases, error taxonomy, a
 - [x] Expose safe runtime health/in-flight/last-error fields in the existing admin UI
 - [x] Add concurrency, failover, error, stream-cleanup, and status regression coverage
 - [x] Run full uv verification, diff hygiene, and secret-scan checks without touching EMP
+- **Status:** complete
+
+### Phase 25: Responses custom-tool ID compatibility
+- [x] Normalize custom-tool item IDs for streaming and non-streaming Responses
+- [x] Preserve tool-result pairing IDs and regular function-call behavior
+- [x] Run focused/full tests and push v0.1.1
+- **Status:** complete
+
+### Phase 26: Rich model catalog and EMP discovery
+- [x] Centralize advertised model IDs and capability metadata in one module
+- [x] Make both adapters and `/v1/models` consume the shared catalog
+- [x] Advertise context, output, reasoning, modalities, tools, streaming, and provenance without fabricating unknown values
+- [x] Add regression coverage for EMP's generic discovery contract
+- **Status:** complete
+
+### Phase 27: Stable startup and bounded diagnostics
+- [x] Stop forcing hot reload in normal `python -m` startup
+- [x] Add an explicit uv-only development reload command
+- [x] Add a private, redacted, size-bounded diagnostic log and expose only its safe status/path
+- [x] Keep application version and package version aligned
+- **Status:** complete
+
+### Phase 28: Model and EMP integration Web UI
+- [x] Show advertised models and capability summaries in the existing single page
+- [x] Show copyable EMP Provider settings without exposing the bearer token
+- [x] Keep operation feedback inline and preserve the zero-build frontend
+- **Status:** complete
+
+### Phase 29: Cross-repository verification and handoff
+- [x] Run focused/full NA2H tests, compile, Web UI parse, diff and secret scans
+- [x] Verify EMP parses a representative NA2H model with context/reasoning/modalities
+- [x] Update version, changelog, README, findings, and progress
+- [x] Leave live AGY generation for the operator's final test
+- **Status:** complete
+
+### Phase 30: Codex unsigned tool-history replay
+- [x] Isolate the first failing turn from the reported Codex rollout
+- [x] Reproduce streamed upstream 400 bodies being masked as local 500s
+- [x] Align missing-signature replay with CPA's first-function-call marker rule
+- [x] Cover the exact Responses custom-tool conversion path and parallel calls
+- [x] Run focused/full uv verification and publish patch release metadata
 - **Status:** complete
 
 ## Decisions Made
