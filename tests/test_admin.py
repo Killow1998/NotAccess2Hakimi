@@ -58,12 +58,15 @@ def _stub_antigravity_preflight(app):
 
 async def test_get_config():
     app = _make_admin_app()
+    app.state.config.auth_token = "downstream-secret"
     resp = await _request(app, "GET", "/api/config")
     assert resp.status_code == 200
     data = resp.json()
     assert "host" in data
     assert "port" in data
-    assert "auth_token" in data
+    assert "auth_token" not in data
+    assert data["auth_token_set"] is True
+    assert "downstream-secret" not in resp.text
     assert "proxy" in data
     assert data["proxy_source"] in {"config", "environment", "system", "direct", "unknown"}
 
@@ -232,6 +235,24 @@ async def test_update_settings():
     assert app.state.config.max_retries == 5
     assert app.state.config.proxy == "socks5://127.0.0.1:1080"
     assert resp.json()["proxy_source"] == "config"
+    assert "auth_token" in resp.json()["message"]
+
+
+async def test_update_settings_preserves_auth_token_when_omitted():
+    app = _make_admin_app()
+    app.state.config.auth_token = "existing-downstream-secret"
+
+    resp = await _request(app, "PUT", "/api/config", json={
+        "host": "127.0.0.1",
+        "port": 9090,
+        "max_retries": 5,
+        "cooldown_seconds": 30,
+        "db_path": "test.db",
+        "proxy": "",
+    })
+
+    assert resp.status_code == 200
+    assert app.state.config.auth_token == "existing-downstream-secret"
 
 
 async def test_add_aistudio_credential():

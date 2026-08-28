@@ -1,6 +1,6 @@
 [project]
 name = "notaccess2hakimi"
-version = "0.5.0"
+version = "0.6.0"
 description = "OpenAI-compatible Gemini proxy with account pool and traffic metering"
 requires-python = ">=3.11"
 dependencies = [
@@ -20,6 +20,7 @@ dev = [
 
 [project.scripts]
 notaccess2hakimi = "hakimi_proxy.main:main"
+hakimi = "hakimi_proxy.cli:main"
 
 [build-system]
 requires = ["hatchling"]

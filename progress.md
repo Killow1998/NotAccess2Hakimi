@@ -613,3 +613,118 @@
   Reviewed the full runtime/harness diff and refactored only duplicate temporary
   app construction after GREEN. Phase 40 is complete; no live Google request was
   run because the changed boundary is fully covered by the raw fake transport.
+
+## Phase 41 start (2026-08-28)
+
+- Started v0.6 after the user selected single-account usability over untestable
+  pool expansion.
+- Applied the landing cut: first implement a unified uv-only CLI and a
+  traffic-free doctor; defer Web UI onboarding changes until that public status
+  contract is proven.
+- Current checkout begins clean on `main` at pushed v0.5.0. Existing
+  `HAKIMI_CONFIG`, public OpenAI interfaces, credential persistence, staged
+  health checks, and Bearer auth remain real contracts.
+- No project `CONTEXT.md` or applicable ADR exists; established repository
+  vocabulary remains authoritative.
+- TDD tracer RED: `hakimi doctor --config <missing> --json` failed because the
+  CLI module did not exist. This is the expected missing public capability.
+- First tracer GREEN: missing config now returns `setup_required`, exit 1, the
+  resolved path, and one directly executable `hakimi serve --config` action.
+- Second tracer GREEN: an existing empty config reports credential and service
+  setup actions while exposing only counts, booleans, and the proxy source.
+  Deliberately secret-bearing transport exceptions remain absent from JSON.
+- Third tracer GREEN: a running instance is accepted only when its OpenAPI
+  version matches the installed package and `/readyz` reports schedulable
+  capacity. Port reachability alone no longer produces a false `ready` result.
+- Serve tracer RED: argparse rejected the missing `serve` command. Added only a
+  lazy config-before-import command and the short `hakimi` console alias.
+- The first post-pyproject focused run did not reach pytest because the isolated
+  temporary uv cache lacked Hatchling and sandbox networking blocked its
+  download. Behavior verification switches to the existing locked environment
+  with `--no-sync`; final packaging will still use a clean authorized build.
+- `--no-sync` still attempted a lock in the read-only default uv cache; adding
+  the task-specific writable cache changed the boundary and the four focused
+  CLI behaviors passed.
+- Completed Phase 41: the short `hakimi` entry has a lazy `serve --config`, and
+  traffic-free doctor distinguishes missing/incomplete config, stopped service,
+  version, and readiness without exposing secrets.
+- Live single-account tracer GREEN: explicit `--live` authenticates only to the
+  local admin API, reuses its staged credential Test, and emits an allowlisted
+  provider/id/model/latency/stage summary without OAuth or Bearer values.
+- Completed Phase 42: one account is selected automatically, multiple accounts
+  require an explicit `provider:id`, and invalid/ambiguous selection never
+  triggers provider traffic. Seven focused CLI behaviors pass.
+- Completed Phase 43: the existing single page now renders one state-driven
+  next action from local health/credential/model data. Ready users receive a
+  generic OpenAI-compatible handoff with a token placeholder; empty and
+  unavailable states lead to login or repair instead.
+- Focused Web UI route acceptance passes and continues to prohibit the removed
+  EMP-specific integration surface.
+- GREEN review corrected three user-path contradictions: missing config now
+  starts before YAML creation, multi-account text output includes explicit
+  selector commands, and copy/restart messages reflect auth-enabled state.
+- Installed console acceptance passed. Doctor first detected the intentionally
+  stale running v0.5 service as `restart_required`; the same config then started
+  through `hakimi serve` as v0.6 and default doctor returned `ready`.
+- One authorized real `doctor --live` passed local, OAuth, control-plane, and
+  inference stages in 11,357 ms. Server logs show OAuth, `loadCodeAssist`,
+  inference, and the local Test endpoint all returned HTTP 200.
+- Final acceptance: 157 tests, compileall, lock validation, inline JavaScript
+  parsing, and the 500-request Agent gate passed. The gate completed 500/500,
+  preserved the signed tool result, and leaked zero leases.
+- Rebuilt the final v0.6.0 wheel and sdist in a task-owned temporary directory;
+  wheel metadata contains both `hakimi` and legacy `notaccess2hakimi` entries.
+- Removed task-owned uv/build directories and restarted the retained local
+  service from the final source. Public runtime checks report version 0.6.0,
+  auth enabled, one active credential, and the new generic onboarding markers.
+
+## Phase 45 start (2026-08-28)
+
+- User approved one operator-chosen key for both Web login and downstream API
+  access, plus explicit full-config clipboard copying.
+- Confirmed the existing middleware already enforces that shared credential on
+  protected APIs. Identified settings plaintext return/DOM population and
+  unconditional localStorage persistence as the security gaps to close.
+- Browser-side encryption was rejected as obfuscation because the authenticated
+  browser must still recover plaintext for Authorization and clipboard use.
+- Planning session catchup helper could not be invoked through RTK at its
+  documented path; recovered from the maintained plan, findings, progress,
+  Git status, and scoped diff instead.
+- Completed the unified-key slice: `/api/config` no longer returns the key,
+  blank settings updates preserve it, browser login defaults to session-only,
+  explicit persistence/logout are available, and full integration copying uses
+  the authenticated key only at clipboard time.
+- Added constant-time Bearer comparison and `hakimi generate-key`; Phase 46 now
+  deepens `hakimi serve` from rejection to automatic authenticated provisioning.
+- Acceptance passed: 161 tests, Python compileall, inline JavaScript parsing,
+  lock validation, diff whitespace checks, CLI help, and credential-pattern
+  scanning. The default 500-request Agent reliability gate passed 500/500 with
+  one maximum active upstream, signed tool-result replay, and zero leaked leases.
+- No live Google request was run because this change is confined to downstream
+  authentication, local CLI startup policy, settings redaction, and browser UX.
+
+## Phase 46 start (2026-08-28)
+
+- User requested automatic key generation on first startup instead of a manual
+  generate-and-edit prerequisite.
+- Locked behavior: provision before application import, save with mode 0600,
+  show once in the invoking terminal, reuse thereafter, and fail closed on any
+  persistence error.
+- Implemented missing/blank-config provisioning with one shared 256-bit key
+  generator. Existing keys are reused without output, and write failure exits
+  before application import.
+- Updated `doctor` so a missing-config recovery action tells the operator to
+  copy the generated key from the first-start terminal before opening Web UI.
+- Phase 46 acceptance passed: all 163 tests, compileall, Web JavaScript parsing,
+  uv lock validation, and diff whitespace checks. No upstream request was
+  needed because only the local startup/config boundary changed.
+- Release documentation reconciliation completed before commit: README is the
+  current operator guide, CHANGELOG folds all first-start/auth behavior into
+  v0.6.0, and the old UX execution plan is explicitly historical/implemented.
+- Final release gate passed again: 163 tests and the 500-request Agent gate
+  completed with 500 successes, signed tool replay, one maximum upstream call,
+  and zero leaked leases. Python compileall, Web JavaScript parsing, lock, diff,
+  and credential-pattern checks also passed.
+- The first isolated `uv build` was blocked only by sandbox network policy; the
+  authorized unchanged build produced the v0.6.0 wheel and sdist. Both generated
+  artifacts were then removed from `dist/`; they are reproducible and ignored.

@@ -2,7 +2,7 @@
 
 OpenAI-compatible Gemini proxy with account pooling and built-in traffic metering.
 
-> Current release: **v0.5.0** — public Agent tool-loop compatibility and continuous verification.
+> Current release: **v0.6.0** — single-account setup, diagnosis, and generic client handoff.
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
@@ -35,6 +35,10 @@ tokscale-style token cost estimation.
   failover, and error classification against isolated fake upstreams.
 - **Agent compatibility gate**: stream a signed tool call through the public
   Responses API, replay its result, and verify the final assistant turn end to end.
+- **Operator CLI**: start with `hakimi serve`, inspect local setup with a
+  traffic-free `hakimi doctor`, and opt into staged upstream checks with `--live`.
+- **Guided first use**: the single-page UI leads from browser OAuth to account
+  repair or a generic OpenAI-compatible Base URL/model handoff.
 
 ## Quick Start
 
@@ -45,19 +49,55 @@ Hakimi uses `uv` for Python and dependencies; no separate version manager is req
 uv python install 3.11
 uv sync --extra dev
 
-# Create a private local config, then fill in credentials you control
-install -m 600 config.example.yaml config.local.yaml
-
-# Run with that config
-HAKIMI_CONFIG=config.local.yaml uv run python -m hakimi_proxy.main
+# Start with a private config path; Hakimi creates it and prints the initial key
+uv run hakimi serve --config config.local.yaml
 ```
 
 Then open `http://127.0.0.1:12345` in your browser. The Web UI can add
 credentials, start Antigravity browser OAuth, run a connection test, and show
-runtime pool status; no YAML editing is required after the initial local copy.
+runtime pool status; a first-time user does not need to edit OAuth fields or
+create the YAML by hand.
 `12345` is the repository default; an explicit `port` in `config.local.yaml`
 wins. For example, an existing `port: 8000` configuration remains at
 `http://127.0.0.1:8000`.
+
+On the first `hakimi serve`, a strong deployment key is generated automatically
+when the selected config is missing or has no `auth_token`. It is saved in the
+mode-0600 config and printed once in that terminal. Use it for both the Web
+login and downstream API clients. Later starts reuse it silently. Treat that
+first-start terminal output as sensitive.
+
+For a deliberate rotation, generate a replacement without changing the config:
+
+```bash
+uv run hakimi generate-key
+```
+
+Save the replacement as `auth_token` in the private config (or enter it in Web
+UI Settings), restart NA2H, and use that same value as `OPENAI_API_KEY`. If the
+initial generated key cannot be persisted, `hakimi serve` refuses to start
+instead of falling back to open access.
+
+### Diagnose setup
+
+The default command checks only the local config and running NA2H instance. It
+does not refresh OAuth or call Google:
+
+```bash
+uv run hakimi doctor --config config.local.yaml
+uv run hakimi doctor --config config.local.yaml --json
+```
+
+Run the existing OAuth → control-plane → inference health check only when you
+explicitly want real upstream traffic:
+
+```bash
+uv run hakimi doctor --config config.local.yaml --live
+```
+
+With multiple accounts, select one explicitly, for example
+`--credential antigravity:my-account`. Doctor never prints API keys, OAuth
+secrets, refresh/access tokens, proxy URLs, or the downstream Bearer token.
 
 ### Quick smoke test
 
@@ -104,15 +144,16 @@ alias `antigravity/gemini-3.7-flash` and forwards it as
 `gemini-3.7-flash-tiered`; `gemini-3.6-flash-high` is a separate catalog model,
 not an automatic alias for 3.7.
 
-### v0.5.0 boundary
+### v0.6.0 boundary
 
 This release targets a trusted local operator and one Uvicorn worker. Each
 credential allows one in-flight request, with a bounded wait and upstream
 failover. `/readyz` exposes traffic-free local readiness, and the reliability
 gate checks text, failure, and signed Agent tool-loop paths without using stored
-credentials or network traffic. Runtime pool state resets on restart. Virtual
-keys, per-user quotas, distributed workers, and quota prediction are deliberately
-not part of this version.
+credentials or network traffic. v0.6 improves one-account setup and recovery;
+it does not expand pool scheduling. Runtime pool state resets on restart.
+Virtual keys, per-user quotas, distributed workers, and quota prediction are
+deliberately not part of this version.
 
 ## API Endpoints
 
@@ -132,11 +173,19 @@ not part of this version.
 
 The built-in single-page console at `/` provides:
 
+- one state-driven next action for login, credential repair, or client handoff
 - service health, active credential counts, total requests/tokens/cost
 - AI Studio and Antigravity add/edit/delete cards with live state badges
 - per-credential and per-model usage breakdown
 - a collapsed settings section for host, port, auth token, retry count, cooldown,
   database path, upstream proxy, and diagnostic journal status
+
+The deployment key is both the Web login and downstream API key. It is never
+returned by `/api/config` or rendered into the settings form. After login, the
+generic configuration button writes the complete configuration—including the
+key—to the clipboard only when clicked. Treat that clipboard content as a
+secret. Login is session-only by default; **在此浏览器中保持登录** explicitly
+opts into persistent browser storage, and **退出** removes both copies.
 
 Credential edit forms never echo secrets. Leave a secret field blank to keep the
 stored value; enter a new value only when rotating it. The credential list
@@ -151,7 +200,8 @@ tokens, but excludes access tokens, proxy settings, downstream Bearer auth, and
 usage data. The endpoint refuses secret transfer over remote plaintext HTTP;
 store the downloaded file as carefully as the original config.
 
-If `auth_token` is set, the UI shows a login screen. Otherwise it's open access.
+If `auth_token` is set, the UI shows a login screen. Otherwise it's open access
+and is safe only on loopback during initial setup.
 
 ### Reliability behavior
 
@@ -247,6 +297,11 @@ request is genuine loopback traffic or reaches NA2H as HTTPS. Directly binding
 NA2H to `0.0.0.0` over plaintext HTTP is not a supported secret-management
 deployment.
 
+The supported `hakimi serve` command provisions a missing deployment key before
+starting any listener and fails closed if that key cannot be written. This is a
+guardrail, not a replacement for HTTPS, firewall rules, or reverse-proxy
+authentication.
+
 ### Upstream Proxy
 
 Set `proxy` in the config to explicitly route all upstream requests through a
@@ -278,6 +333,9 @@ uv run pytest -v
 uv run python -m hakimi_proxy.reliability_gate
 
 # Stable normal runtime (no implicit file watcher)
+uv run hakimi serve --config config.local.yaml
+
+# Legacy module entry remains supported
 HAKIMI_CONFIG=config.local.yaml uv run python -m hakimi_proxy.main
 
 # Explicit development reload; config/database changes do not restart it
@@ -285,6 +343,10 @@ HAKIMI_CONFIG=config.local.yaml uv run uvicorn hakimi_proxy.main:app \
   --host 127.0.0.1 --port 12345 --reload \
   --reload-exclude config.local.yaml --reload-exclude 'state/*' --reload-exclude '*.db*'
 ```
+
+The legacy module/Uvicorn entries do not perform first-start key provisioning;
+use them only for development with an already secured config or a loopback-only
+listener. Normal operation should use `hakimi serve`.
 
 The repository uses `uv` only. Before opening a pull request or publishing a
 new release, run `uv run pytest -q`, `uv run python -m compileall -q src tests`,
@@ -300,6 +362,7 @@ compile, gate, and package build without repository secrets.
 
 ```
 src/hakimi_proxy/
+  cli.py             # first-start key, serve, and redacted local/live doctor
   config.py          # YAML config loading + dataclasses
   model_catalog.py   # Shared model IDs + verified discovery metadata
   credential_bundle.py # Versioned credential backup/restore validation

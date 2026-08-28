@@ -49,6 +49,7 @@ async def test_healthz():
     assert data["total_credentials"] == 1
     assert data["in_flight_requests"] == 0
     assert data["proxy_source"] in {"config", "environment", "system", "direct"}
+    assert data["auth_enabled"] is False
     assert data["diagnostics"]["path"] == "state/diagnostics.jsonl"
     assert isinstance(data["diagnostics"]["enabled"], bool)
 
@@ -128,6 +129,17 @@ async def test_authenticated_root_stays_public():
     assert "previewCredentialImport" in resp.text
     assert "检查中…" in resp.text
     assert "control_plane" in resp.text
+    assert 'id="onboarding"' in resp.text
+    assert "renderOnboarding" in resp.text
+    assert "api('GET', '/v1/models')" in resp.text
+    assert "sessionStorage.getItem('hakimi_token')" in resp.text
+    assert "localStorage.getItem('hakimi_token')" in resp.text
+    assert "navigator.clipboard.writeText(JSON.stringify(integrationConfig(apiKey)" in resp.text
+    assert "state.health?.auth_enabled ? token : '<ANY_NON_EMPTY_VALUE>'" in resp.text
+    assert "setAuth').value = config.auth_token" not in resp.text
+    assert "OpenAI-compatible" in resp.text
+    assert "包含敏感 API key" in resp.text
+    assert "Bearer token/数据库变更需重启" in resp.text
 
 
 async def test_list_models():

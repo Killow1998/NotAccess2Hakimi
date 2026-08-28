@@ -308,9 +308,9 @@
 - The existing single-worker, one-flight-per-credential runtime remains the
   release contract. Multi-user keys, quota prediction, additional provider
   aliases, higher per-account concurrency, and Web UI redesign stay out of v0.5.
-- There is no repository CI workflow today, so the proven fake-upstream gate is
-  not automatically enforced on pushes. CI belongs after the public tracer is
-  green, not before it.
+- At the start of Phase 39, the repository had no CI workflow, so the proven
+  fake-upstream gate was not automatically enforced on pushes. CI belonged
+  after the public tracer was green, not before it.
 - Astral's current official GitHub Actions guide (checked 2026-08-28) pins
   `astral-sh/setup-uv` v9.0.0 at commit
   `c771a70e6277c0a99b617c7a806ffedaca235ff9` and `actions/checkout` v7.0.1 at
@@ -357,3 +357,145 @@
 - The hosted GitHub workflow cannot run until these changes are pushed. Local
   commands equivalent to every workflow step have passed; release reporting
   must distinguish that from an actual GitHub Actions run.
+
+## v0.6.0 single-account usability direction (2026-08-28)
+
+- The v0.5 public Agent contract now passes local tests, the bounded gate, a
+  real Codex tool round trip through EMP, and hosted GitHub CI. The next weak
+  boundary is first-use and recovery, not model protocol or pool scheduling.
+- Multi-account behavior remains covered by fake credentials, but there is no
+  second authorized real account for realistic quota/failover observation.
+  Pool expansion is therefore frozen rather than deleted.
+- The minimum viable v0.6 proof is one CLI surface: `hakimi serve` plus a
+  traffic-free, redacted, actionable `hakimi doctor`. Real Google traffic must
+  remain an explicit `--live` action and reuse the existing staged health path.
+- Scope cuts: no background health polling, quota prediction, virtual keys,
+  deployment framework, multi-worker state, or another multi-page Web UI.
+- Stop rule: if the CLI cannot reuse current config/health ownership without
+  duplicating runtime state or exposing secrets, stop and first extract one
+  shared local status model instead of adding a parallel diagnostic system.
+- The current console entry is `notaccess2hakimi = hakimi_proxy.main:main` and
+  `main.py` creates the application at import time. A new CLI must select the
+  config path before lazily importing `hakimi_proxy.main`; importing it at CLI
+  module load would make `--config` misleading.
+- Preserve the existing console name as a compatibility contract and add the
+  shorter `hakimi` entry rather than forcing an unrelated command migration.
+- `/healthz` and `/readyz` already own local process/pool status. Doctor should
+  consume these public endpoints for a running instance, not clone credential
+  scheduling state in a second implementation.
+- `load_config_from_env()` intentionally tolerates a missing file by returning
+  a minimal default, while `load_config(path)` is strict. Doctor must report a
+  missing explicitly selected file as an actionable setup state rather than
+  silently claiming that an empty default config was loaded.
+- Configuration dataclasses contain every provider secret and access token.
+  Diagnostic output must be built from an allowlist of booleans/counts/paths;
+  serializing a config object, exception locals, or `/api/config` is forbidden.
+- The existing admin credential Test endpoint already owns layered OAuth,
+  control-plane, and inference behavior. `doctor --live` should invoke that
+  public endpoint on the running service instead of importing adapter internals
+  or creating another refresh lifecycle.
+- `/healthz`, `/readyz`, and `/openapi.json` are public even when Bearer auth is
+  enabled. Default doctor can therefore verify process health, schedulability,
+  and running version without reading or transmitting the downstream token.
+- Live credential health is intentionally behind the authenticated admin API.
+  Doctor may read the local token only to construct an in-memory Authorization
+  header; the value must never be included in checks, errors, logs, or JSON.
+- Proxy selection mutates only the current process environment and exposes a
+  safe source label (`config`, `environment`, `system`, or `direct`). Doctor
+  should report that label, never the configured proxy URL.
+- The current credential Test treats an upstream HTTP 200 as inference
+  reachability and does not expose generated content. That is appropriate for
+  `doctor --live`; it is a health action, not a model-quality assertion.
+- The current Web UI is already a zero-build single page with one login gate,
+  health summary, credential cards, usage, and collapsed settings. v0.6 should
+  add state guidance inside this page, not introduce routing or another API.
+- Empty credentials are currently rendered independently as two passive
+  provider placeholders while both add buttons remain equally prominent. A
+  first-use user has no single recommended next action even though the existing
+  `state.health` and credential arrays already contain enough information.
+- The prior EMP-specific integration card is gone. The top bar exposes only the
+  Base URL; a generic handoff can be derived locally from `window.location`,
+  the configured token state, and the advertised model endpoint without naming
+  another product.
+- `refreshAll()` already performs one local parallel snapshot and then renders
+  the page. Adding `/v1/models` to that local snapshot provides a recommended
+  model without Google traffic or a new backend contract.
+- A single state-driven onboarding panel can cover the useful states from
+  existing data: no credentials → Antigravity login; configured but zero active
+  → inspect/check credentials; active → show generic OpenAI-compatible handoff.
+  Phase 43 initially copied only a placeholder; Phase 45 later kept the key out
+  of rendered content while allowing an explicit sensitive clipboard action.
+- Existing route tests explicitly prohibit the removed EMP integration title.
+  New UI acceptance must preserve that negative contract and use only generic
+  Base URL/model/API-key language.
+- README still leads with copying/editing YAML and `python -m` startup. v0.6
+  must lead with `hakimi serve --config ...`, explain first-start provisioning,
+  and make `hakimi doctor` the recovery path; the legacy module command can
+  remain in Development.
+- Release metadata has four direct version owners: `pyproject.toml`, package
+  `__version__`, the lockfile root package entry, and the app-version assertion.
+  Advance them together only after the full pre-release suite is green.
+- GREEN review found three user-path inconsistencies worth fixing before
+  release: missing-config doctor still told users to create YAML before serve;
+  text-mode multi-account diagnosis did not show a selectable command; and the
+  copy toast always named the Bearer placeholder even when auth was disabled.
+- Settings already require restart for middleware-owned auth changes, but both
+  backend and UI messages named only host/port/database. v0.6 guidance must name
+  auth token explicitly rather than imply that enforcement hot-reloads.
+- The installed doctor correctly detected a running v0.5 process from a v0.6
+  package and required restart. After restart through `hakimi serve`, default
+  doctor returned ready without Google traffic and explicit live doctor passed
+  all four stages in 11.4 seconds.
+- Final secret-pattern review found only the intentional `GOCSPX-…` Web UI
+  placeholder. Real doctor JSON exposed only paths, counts, booleans, safe IDs,
+  model, latency, and stage states.
+
+## Phase 45 unified deployment key boundary (2026-08-28)
+
+- The current Bearer middleware already makes `auth_token` both the Web login
+  credential and the downstream OpenAI-compatible API key. Public UI HTML,
+  liveness/readiness, and API schema remain reachable; credential, usage,
+  management, model, and inference APIs require the key.
+- Browser-side encryption cannot hide a usable key from an authenticated
+  browser: request construction and clipboard copying necessarily make the
+  plaintext available in browser memory. The meaningful boundary is to avoid
+  rendering, logging, or returning the key unnecessarily.
+- Before Phase 45, the settings endpoint returned plaintext `auth_token`, and
+  the Web UI wrote it into a password input when Settings opened. This was a
+  wider exposure than the requested explicit clipboard action.
+- Before Phase 45, login persisted in `localStorage` unconditionally.
+  Session-only storage became the default and persistent login now requires an
+  explicit user choice.
+- A configured non-loopback listener without `auth_token` would expose the
+  entire control plane. Normal `hakimi serve` should fail closed in that state
+  and point to a strong key-generation action.
+- The completed implementation keeps the authenticated key only in the Web
+  session variable plus sessionStorage by default. Persistent localStorage is
+  opt-in, logout clears both stores, and the only normal key export is an
+  explicit clipboard action with a sensitive-content warning.
+- Settings now expose only `auth_token_set` and preserve the stored key when a
+  rotation value is omitted. `hakimi generate-key` emits a 256-bit URL-safe
+  random value with a recognizable `hakimi_` prefix.
+- The first Phase 45 guard rejected an unauthenticated non-loopback start.
+  Phase 46 supersedes that manual prerequisite by provisioning authentication
+  before every normal `hakimi serve` listener; HTTPS/firewall controls remain
+  required for actual remote deployment.
+
+## Phase 46 automatic first-start provisioning (2026-08-28)
+
+- Requiring a separate `generate-key` plus config edit is unnecessary first-use
+  friction. The `hakimi serve` command already owns config selection before app
+  import, so it is the correct boundary to provision a missing deployment key.
+- Provisioning must happen before any listener starts, persist through the
+  existing mode-0600 config writer, and abort rather than fall back to open
+  access if persistence fails.
+- The generated value must be shown only during the start that creates it.
+  Subsequent starts load the persisted value silently; manual `generate-key`
+  remains useful for deliberate rotation.
+- Completed behavior covers both a missing config and an existing config with
+  blank auth. The selected file is written mode 0600 before application import;
+  a write error exits 2 without importing or starting the application.
+- The serve process must retain `HAKIMI_CONFIG` for its full runtime because
+  Web mutations and OAuth refresh-token rotation resolve the persistence path
+  dynamically. Tests therefore restore their surrounding environment rather
+  than changing production lifetime semantics.

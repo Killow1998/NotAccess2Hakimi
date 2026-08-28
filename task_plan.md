@@ -6,7 +6,7 @@ preserving its verified AI Studio and authorized Antigravity paths, public
 OpenAI-compatible contracts, and strict credential boundary.
 
 ## Current Phase
-Phase 40 complete; v0.5.0 Agent compatibility acceptance passed
+Phase 46 complete; automatic first-start key provisioning accepted
 
 ## Phases
 
@@ -72,8 +72,8 @@ Phase 40 complete; v0.5.0 Agent compatibility acceptance passed
 - [x] Replace the paged shell with one responsive page
 - [x] Add per-credential busy and inline Test results
 - [x] Run automated acceptance checks
-- [ ] Run manual desktop/mobile browser acceptance checks
-- **Status:** in progress (implementation and automated checks complete; manual browser pass pending)
+- [x] Run manual desktop/mobile browser acceptance checks
+- **Status:** complete; later operator acceptance also covered OAuth, health, and integration states
 
 ### Phase 11: Match EMP proxy auto-detection
 - [x] Detect explicit environment/system/GNOME proxies when `config.proxy` is empty
@@ -294,6 +294,46 @@ Phase 40 complete; v0.5.0 Agent compatibility acceptance passed
 - [x] Review the final scope and report any live smoke intentionally not run
 - **Status:** complete
 
+### Phase 41: Unified CLI and doctor tracer
+- [x] Specify public `hakimi serve` and `hakimi doctor` behavior through one test at a time
+- [x] Keep configuration selection uv-only and compatible with `HAKIMI_CONFIG`
+- [x] Make default diagnosis traffic-free, redacted, actionable, and machine-readable
+- [x] Verify the running-instance version/readiness boundary without trusting system proxies
+- **Status:** complete
+
+### Phase 42: Explicit live account diagnosis
+- [x] Add an opt-in live diagnostic path that reuses the existing layered credential health contract
+- [x] Require an explicit account choice when more than one credential exists
+- [x] Preserve manual-only Google traffic and safe upstream error classification
+- **Status:** complete
+
+### Phase 43: First-use Web UI state and generic integration handoff
+- [x] Turn an empty installation into one obvious login-first path
+- [x] Show one generic OpenAI-compatible Base URL/token/model handoff after readiness
+- [x] Keep product-specific EMP guidance and additional pages out of the UI
+- **Status:** complete
+
+### Phase 44: v0.6 acceptance
+- [x] Run focused/full tests, CLI subprocess smoke, Web UI parse, and reliability gate
+- [x] Prove secrets never appear in doctor output or generated integration examples
+- [x] Update version and release documentation only after the vertical slice is green
+- **Status:** complete
+
+### Phase 45: Unified deployment key
+- [x] Make one operator-chosen key the Web login and downstream API key
+- [x] Copy the authenticated key only on explicit user action; never render or return it from settings
+- [x] Default browser persistence to the current session and keep persistent login explicit
+- [x] Prevent unauthenticated deployment startup and provide a strong key generator
+- [x] Update operator guidance and run focused/full security acceptance
+- **Status:** complete
+
+### Phase 46: Automatic first-start key provisioning
+- [x] Generate and persist a strong deployment key when the selected config is missing or has no key
+- [x] Show the generated key exactly on the provisioning start and reuse it on later starts
+- [x] Fail closed if the private config cannot be written
+- [x] Align first-start documentation and rerun CLI/full security acceptance
+- **Status:** complete
+
 ## Decisions Made
 
 | Decision | Rationale |
@@ -343,3 +383,11 @@ Phase 40 complete; v0.5.0 Agent compatibility acceptance passed
 | v0.5 reliability tracer lacked `agent_tool_round_trip` | 1 | Expected RED; implement the public two-turn AGY scenario behind the existing bounded gate result |
 | First Agent tracer implementation reached validation with a mismatched result | 1 | Inspect the isolated public result fields before changing protocol code; do not weaken the expected contract |
 | Local `uv build` could not fetch isolated Hatchling requirements in the network sandbox | 1 | Re-run the same package build with narrow dependency-download permission; CI remains responsible for clean hosted resolution |
+| CLI-focused test tried to rebuild after adding the console script and could not fetch Hatchling in the sandbox | 1 | Reuse the already locked environment with `uv run --no-sync` for behavior tests; reserve an authorized clean build for final acceptance |
+| Health auth-state test patch used an inferred stale assertion block | 1 | Read the exact current test and add the same public boolean assertion at the actual health response boundary |
+| Installed `hakimi --help` check could not lock the read-only default uv cache | 1 | Re-run once with the existing task-specific writable cache and `--no-sync`; the installed console surface passed |
+| RTK-filtered OpenAPI curl truncated JSON before jq parsing | 1 | Use documented `rtk proxy curl` only for the complete local response; final version/UI markers passed |
+| Non-loopback CLI RED test entered the real server loop | 1 | Add an import-boundary failure so the missing security guard fails immediately without starting Uvicorn |
+| New serve tests leaked `HAKIMI_CONFIG` into the full suite | 1 | Register the variable with pytest monkeypatch so teardown restores the environment before later app creation |
+| Phase 46 full suite loaded generated auth in a later diagnostic test | 1 | `delenv(..., raising=False)` did not register an absent key; seed it through `setenv` so pytest restores the original environment after each CLI test |
+| Final isolated package build could not reach PyPI in the sandbox | 1 | Re-run the unchanged `uv build` with dependency-download permission; v0.6.0 wheel and sdist built successfully |

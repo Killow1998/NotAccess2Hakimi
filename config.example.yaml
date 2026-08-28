@@ -3,6 +3,9 @@
 
 host: 127.0.0.1
 port: 12345
+# `hakimi serve` generates this automatically when it is empty or missing.
+# For manual rotation, generate with: uv run hakimi generate-key
+# This same value is the Web login and downstream OpenAI-compatible API key.
 auth_token: "your-secret-bearer-token"
 max_retries: 3
 cooldown_seconds: 60

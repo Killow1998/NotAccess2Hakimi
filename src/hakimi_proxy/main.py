@@ -153,6 +153,7 @@ def create_app() -> FastAPI:
             "total_credentials": len(pool.all_credentials),
             "in_flight_requests": sum(item["in_flight"] for item in status),
             "proxy_source": app.state.proxy_source,
+            "auth_enabled": bool(app.state.config.auth_token),
             "diagnostics": {
                 "enabled": app.state.diagnostics.enabled,
                 "path": app.state.diagnostics.display_path,

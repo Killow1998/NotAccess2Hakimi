@@ -4,6 +4,52 @@ All notable changes to NotAccess2Hakimi are documented here.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-28
+
+### Added
+
+- A short `hakimi serve --config ...` startup command that selects the config
+  before importing the FastAPI application while preserving legacy entrypoints.
+- A redacted `hakimi doctor` with text/JSON output for config, credential
+  counts, proxy source, running version, and readiness. Default diagnosis uses
+  local traffic only.
+- An explicit `doctor --live` path that reuses the existing authenticated,
+  staged credential health endpoint. A single account is selected
+  automatically; multiple accounts require `--credential provider:id`.
+- One state-driven first-use panel in the existing Web UI for browser login,
+  credential repair, or generic OpenAI-compatible client configuration.
+- `hakimi generate-key` for deliberate deployment-key rotation, plus automatic
+  first-start provisioning that persists a missing key with mode 0600 and
+  prints it only on the provisioning start.
+- Session-only Web login by default, an explicit persistent-login choice, and
+  logout that clears both browser stores.
+
+### Security
+
+- Doctor emits allowlisted summaries and never prints provider credentials,
+  access/refresh tokens, proxy URLs, downstream Bearer values, or raw transport
+  exceptions.
+- The settings API returns only `auth_token_set`; it never returns or fills the
+  deployment key into the settings DOM. Generic integration copying includes
+  the authenticated key only after an explicit click and warns that the
+  clipboard contains a secret.
+- `hakimi serve` provisions authentication before starting any listener and
+  fails closed if the generated key cannot be persisted. Bearer comparison
+  uses a constant-time primitive; `/healthz` exposes only whether auth is enabled.
+
+### Changed
+
+- Quick Start now uses the uv-only `hakimi` entry and no longer requires a new
+  user to hand-create YAML or OAuth fields before opening the Web UI.
+
+### Verified
+
+- Passed 163 automated tests, Python compilation, lock validation, Web UI
+  JavaScript parsing, and the default 500-request Agent reliability gate.
+- Built the 0.6.0 wheel and sdist with both legacy and `hakimi` console entries.
+- Passed one authorized real `doctor --live` run across local, OAuth,
+  Antigravity control-plane, and inference stages.
+
 ## [0.5.0] - 2026-08-28
 
 ### Added

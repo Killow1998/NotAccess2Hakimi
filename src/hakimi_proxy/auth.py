@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import secrets
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -30,7 +32,7 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
-            if token == self._auth_token:
+            if secrets.compare_digest(token, self._auth_token):
                 return await call_next(request)
 
         return JSONResponse(status_code=401, content={"error": {"message": "Invalid or missing bearer token", "type": "auth_error"}})

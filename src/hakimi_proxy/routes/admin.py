@@ -93,7 +93,7 @@ class CredentialImportIn(BaseModel):
 class SettingsIn(BaseModel):
     host: str = "127.0.0.1"
     port: int = 12345
-    auth_token: str = ""
+    auth_token: str | None = None
     max_retries: int = 3
     cooldown_seconds: int = 60
     db_path: str = "hakimi.db"
@@ -194,7 +194,7 @@ async def get_settings(request: Request):
     return {
         "host": config.host,
         "port": config.port,
-        "auth_token": config.auth_token,
+        "auth_token_set": bool(config.auth_token),
         "max_retries": config.max_retries,
         "cooldown_seconds": config.cooldown_seconds,
         "db_path": config.db_path,
@@ -209,7 +209,8 @@ async def update_settings(settings: SettingsIn, request: Request):
     config = request.app.state.config
     config.host = settings.host
     config.port = settings.port
-    config.auth_token = settings.auth_token
+    if settings.auth_token is not None:
+        config.auth_token = settings.auth_token
     config.max_retries = settings.max_retries
     config.cooldown_seconds = settings.cooldown_seconds
     config.db_path = settings.db_path
@@ -220,7 +221,7 @@ async def update_settings(settings: SettingsIn, request: Request):
     return {
         "status": "ok",
         "proxy_source": request.app.state.proxy_source,
-        "message": "Settings saved. Restart required for host/port/db_path changes.",
+        "message": "Settings saved. Restart required for host/port/auth_token/db_path changes.",
     }
 
 

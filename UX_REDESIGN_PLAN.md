@@ -1,6 +1,8 @@
-# NA2H Web UI 单页重构执行方案
+# NA2H Web UI 单页重构执行方案（历史归档）
 
-> 状态：implementation-ready，尚未实施
+> 状态：已实施并归档（2026-08-28）
+> 当前事实来源：`README.md`、`CHANGELOG.md` 与实际管理 API
+> 说明：本文保留最初的设计取舍和验收思路，不再作为待办清单；后续版本已进一步加入浏览器 OAuth、分层健康检查、凭证迁移、统一部署密钥与首次启动自动生成。
 > 目标执行者：LunaMax
 > 基线日期：2026-08-19
 > 项目：`/home/nuc/NA2H/NotAccess2Hakimi`

@@ -33,6 +33,8 @@ a { color: var(--blue); }
 .login-box h1 { margin: 0 0 5px; font-size: 22px; }
 .login-box p { margin: 0 0 20px; color: var(--muted); }
 .login-box input { margin-bottom: 12px; }
+.remember-login { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; color: var(--muted); font-size: 13px; }
+.remember-login input { width: auto; margin: 0; }
 .app { width: min(1180px, 100%); margin: 0 auto; padding: 30px 24px 52px; }
 .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
 .eyebrow { margin: 0 0 3px; color: var(--blue); font: 700 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
@@ -51,6 +53,15 @@ a { color: var(--blue); }
 .stat-value { font-size: 23px; font-weight: 700; }
 .stat-sub { color: var(--muted); font-size: 11px; }
 .panel { margin-top: 16px; padding: 20px; }
+.onboarding { border-color: #315f8f; background: linear-gradient(135deg, rgba(31,111,235,.11), var(--surface) 55%); }
+.onboarding.ready { border-color: rgba(63,185,80,.55); background: linear-gradient(135deg, rgba(63,185,80,.10), var(--surface) 55%); }
+.onboarding h2 { margin: 0 0 5px; font-size: 17px; }
+.onboarding p { margin: 0; color: var(--muted); }
+.onboarding .actions { margin-top: 14px; justify-content: flex-start; }
+.integration-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.integration-item { padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: rgba(0,0,0,.12); }
+.integration-item span { display: block; margin-bottom: 3px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.integration-item code { font: 12px/1.5 var(--mono); overflow-wrap: anywhere; }
 .panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
 .panel-header h2 { margin: 0; font-size: 17px; }
 .panel-header p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
@@ -111,7 +122,7 @@ tr:last-child td { border-bottom: 0; }
   .top-actions, .actions { justify-content: flex-start; margin-top: 13px; }
   .stats { grid-template-columns: 1fr 1fr; }
   .credential-actions { margin-top: 12px; justify-content: flex-start; flex-wrap: wrap; }
-  .settings-grid, .modal .form-grid { grid-template-columns: 1fr; }
+  .settings-grid, .modal .form-grid, .integration-grid { grid-template-columns: 1fr; }
   .form-group.full { grid-column: auto; }
   .panel { padding: 15px; }
   th, td { padding: 8px 6px; }
@@ -125,6 +136,7 @@ tr:last-child td { border-bottom: 0; }
     <h1>hakimi-proxy</h1>
     <p>输入 Bearer token 进入本地控制台。</p>
     <input id="loginToken" type="password" autocomplete="current-password" placeholder="Bearer token">
+    <label class="remember-login"><input id="rememberLogin" type="checkbox">在此浏览器中保持登录</label>
     <button class="btn-blue" type="submit" style="width:100%">登录</button>
   </form>
 </div>
@@ -140,8 +152,13 @@ tr:last-child td { border-bottom: 0; }
     <div class="top-actions">
       <span class="service" id="serviceStatus"><span class="service-dot"></span><span>检查中</span></span>
       <button class="btn-ghost" onclick="refreshAll()">刷新</button>
+      <button class="btn-ghost" onclick="logout()">退出</button>
     </div>
   </header>
+
+  <section class="panel onboarding" id="onboarding" aria-live="polite">
+    <div id="onboardingContent"><h2>下一步</h2><p>正在检查本地设置…</p></div>
+  </section>
 
   <div class="stats" id="stats"></div>
 
@@ -177,7 +194,7 @@ tr:last-child td { border-bottom: 0; }
       <div class="settings-grid">
         <div class="form-group"><label for="setHost">Host</label><input id="setHost"></div>
         <div class="form-group"><label for="setPort">Port</label><input id="setPort" type="number"></div>
-        <div class="form-group full"><label for="setAuth">Bearer token</label><input id="setAuth" type="password" autocomplete="off"></div>
+        <div class="form-group full"><label for="setAuth">Bearer token</label><input id="setAuth" type="password" autocomplete="new-password" placeholder="留空：保持现有密钥"></div>
         <div class="form-group"><label for="setRetries">Max retries</label><input id="setRetries" type="number"></div>
         <div class="form-group"><label for="setCooldown">Cooldown seconds</label><input id="setCooldown" type="number"></div>
         <div class="form-group full"><label for="setDb">Database path</label><input id="setDb"></div>
@@ -197,8 +214,8 @@ tr:last-child td { border-bottom: 0; }
 <div class="toast" id="toast" role="status"></div>
 
 <script>
-const state = { credentials: { aistudio: [], antigravity: [] }, usage: null, health: null, busy: new Set(), tests: {} };
-let token = localStorage.getItem('hakimi_token') || '';
+const state = { credentials: { aistudio: [], antigravity: [] }, models: [], usage: null, health: null, busy: new Set(), tests: {} };
+let token = sessionStorage.getItem('hakimi_token') || localStorage.getItem('hakimi_token') || '';
 let editingType = '';
 let editingId = '';
 let oauthSession = null;
@@ -225,8 +242,17 @@ function showLogin() {
 function doLogin(event) {
   event?.preventDefault();
   token = document.getElementById('loginToken').value.trim();
-  localStorage.setItem('hakimi_token', token);
+  sessionStorage.setItem('hakimi_token', token);
+  if (document.getElementById('rememberLogin').checked) localStorage.setItem('hakimi_token', token);
+  else localStorage.removeItem('hakimi_token');
   init();
+}
+function logout() {
+  token = '';
+  sessionStorage.removeItem('hakimi_token');
+  localStorage.removeItem('hakimi_token');
+  document.getElementById('loginToken').value = '';
+  showLogin();
 }
 function setAppVisible() {
   document.getElementById('loginView').classList.add('hidden');
@@ -234,7 +260,11 @@ function setAppVisible() {
 }
 
 async function init() {
-  try { state.health = await api('GET', '/healthz'); setAppVisible(); await refreshAll(); }
+  try {
+    state.health = await api('GET', '/healthz');
+    if (state.health.auth_enabled && !token) { showLogin(); return; }
+    setAppVisible(); await refreshAll();
+  }
   catch (error) {
     if (error.message === 'Unauthorized') return;
     setAppVisible(); toast(error.message, 'error');
@@ -242,13 +272,61 @@ async function init() {
 }
 async function refreshAll() {
   try {
-    const [health, credentials, usage] = await Promise.all([
-      api('GET', '/healthz'), api('GET', '/api/credentials'), api('GET', '/api/usage/summary'),
+    const [health, credentials, usage, models] = await Promise.all([
+      api('GET', '/healthz'), api('GET', '/api/credentials'), api('GET', '/api/usage/summary'), api('GET', '/v1/models'),
     ]);
-    state.health = health; state.credentials = credentials; state.usage = usage;
-    renderHealth(); renderCredentials(); renderUsage();
+    state.health = health; state.credentials = credentials; state.usage = usage; state.models = models.data || [];
+    renderHealth(); renderCredentials(); renderUsage(); renderOnboarding();
     document.getElementById('endpoint').textContent = `OpenAI Base URL: ${window.location.origin}/v1`;
   } catch (error) { toast(error.message, 'error'); }
+}
+function recommendedModel() {
+  const ids = new Set((state.models || []).map(model => model.id));
+  if ((state.credentials.antigravity || []).length) {
+    const id = ids.has('gemini-3.7-flash-tiered') ? 'gemini-3.7-flash-tiered' : 'gemini-3.7-flash';
+    return `antigravity/${id}`;
+  }
+  if (ids.has('gemini-3.7-flash')) return 'gemini-3.7-flash';
+  return state.models?.[0]?.id || 'gemini-2.5-flash';
+}
+function integrationConfig(apiKey) {
+  return {
+    base_url: `${window.location.origin}/v1`,
+    api_key: apiKey,
+    model: recommendedModel(),
+  };
+}
+function renderOnboarding() {
+  const panel = document.getElementById('onboarding');
+  const content = document.getElementById('onboardingContent');
+  const ai = state.credentials.aistudio || [];
+  const ag = state.credentials.antigravity || [];
+  const total = ai.length + ag.length;
+  const active = Number(state.health?.active_credentials || 0);
+  panel.classList.toggle('ready', active > 0);
+  if (!total) {
+    content.innerHTML = `<h2>第 1 步：登录一个账号</h2><p>推荐使用 Antigravity 浏览器登录；无需手填 client ID、secret、refresh token 或 Project ID。</p><div class="actions"><button class="btn-blue" onclick="startAntigravityOAuth()">Antigravity 登录</button><button class="btn-ghost" onclick="openCredentialModal('aistudio')">添加 AI Studio key</button></div>`;
+    return;
+  }
+  if (!active) {
+    content.innerHTML = `<h2>凭证尚不可调度</h2><p>账号已保存，但当前没有可用凭证。请在下方凭证卡片运行“检查”，按失败阶段重新登录或等待冷却结束。</p><div class="actions"><button class="btn-ghost" onclick="document.getElementById('credentials').scrollIntoView({behavior:'smooth'})">查看凭证状态</button></div>`;
+    return;
+  }
+  const config = integrationConfig('');
+  const authEnabled = Boolean(state.health?.auth_enabled);
+  const authNote = authEnabled
+    ? '登录密钥同时也是客户端 API key；页面不显示它，仅在点击复制时写入剪贴板。'
+    : '当前未启用 Bearer 鉴权，仅适合本机回环使用；客户端 API key 可暂填任意非空值。暴露到局域网或服务器前请先设置 token 并重启。';
+  const authAction = authEnabled ? '' : '<button class="btn-ghost" onclick="openSettings()">设置 Bearer token</button>';
+  content.innerHTML = `<h2>已可接入${authEnabled ? '' : '（未启用鉴权）'}</h2><p>NA2H 已准备好作为 OpenAI-compatible provider。${authNote}</p><div class="integration-grid"><div class="integration-item"><span>Base URL</span><code>${esc(config.base_url)}</code></div><div class="integration-item"><span>Model</span><code>${esc(config.model)}</code></div></div><div class="actions"><button class="btn-primary" onclick="copyIntegrationConfig()">复制通用配置</button>${authAction}<button class="btn-ghost" onclick="document.getElementById('credentials').scrollIntoView({behavior:'smooth'})">检查账号</button></div>`;
+}
+async function copyIntegrationConfig() {
+  try {
+    const apiKey = state.health?.auth_enabled ? token : '<ANY_NON_EMPTY_VALUE>';
+    if (state.health?.auth_enabled && !apiKey) { showLogin(); return; }
+    await navigator.clipboard.writeText(JSON.stringify(integrationConfig(apiKey), null, 2));
+    toast('通用配置已复制，包含敏感 API key，请勿分享', 'success');
+  } catch (error) { toast('复制失败，请手动复制 Base URL 和模型', 'error'); }
 }
 function renderHealth() {
   const health = state.health || {};
@@ -265,8 +343,11 @@ function renderHealth() {
 }
 
 async function loadCredentials() {
-  state.credentials = await api('GET', '/api/credentials');
-  renderCredentials();
+  const [health, credentials, models] = await Promise.all([
+    api('GET', '/healthz'), api('GET', '/api/credentials'), api('GET', '/v1/models'),
+  ]);
+  state.health = health; state.credentials = credentials; state.models = models.data || [];
+  renderHealth(); renderCredentials(); renderOnboarding();
 }
 function renderCredentials() {
   const ai = state.credentials.aistudio || [];
@@ -577,11 +658,16 @@ function tableHtml(headers, rows) {
 
 let settingsLoaded = false;
 document.getElementById('settingsDetails').addEventListener('toggle', event => { if (event.target.open && !settingsLoaded) loadSettings(); });
+function openSettings() {
+  const details = document.getElementById('settingsDetails');
+  details.open = true;
+  details.scrollIntoView({behavior: 'smooth'});
+}
 async function loadSettings() {
   try {
     const config = await api('GET', '/api/config');
     document.getElementById('setHost').value = config.host || ''; document.getElementById('setPort').value = config.port || '';
-    document.getElementById('setAuth').value = config.auth_token || ''; document.getElementById('setRetries').value = config.max_retries || 3;
+    document.getElementById('setAuth').value = ''; document.getElementById('setAuth').placeholder = config.auth_token_set ? '留空：保持现有密钥' : '请设置部署密钥'; document.getElementById('setRetries').value = config.max_retries || 3;
     document.getElementById('setCooldown').value = config.cooldown_seconds || 60; document.getElementById('setDb').value = config.db_path || '';
     document.getElementById('setProxy').value = config.proxy || ''; document.getElementById('setProxySource').value = config.proxy_source || 'unknown'; document.getElementById('setConfigFile').value = config.config_file || '';
     const diagnostics = state.health?.diagnostics || {}; document.getElementById('setDiagnostics').value = diagnostics.enabled ? diagnostics.path : 'disabled'; settingsLoaded = true;
@@ -589,9 +675,12 @@ async function loadSettings() {
 }
 async function saveSettings() {
   try {
-    const saved = await api('PUT', '/api/config', { host: value('setHost') || '127.0.0.1', port: Number(value('setPort')) || 12345, auth_token: value('setAuth'), max_retries: Number(value('setRetries')) || 3, cooldown_seconds: Number(value('setCooldown')) || 60, db_path: value('setDb') || 'hakimi.db', proxy: value('setProxy') });
+    const body = { host: value('setHost') || '127.0.0.1', port: Number(value('setPort')) || 12345, max_retries: Number(value('setRetries')) || 3, cooldown_seconds: Number(value('setCooldown')) || 60, db_path: value('setDb') || 'hakimi.db', proxy: value('setProxy') };
+    if (value('setAuth')) body.auth_token = value('setAuth');
+    const saved = await api('PUT', '/api/config', body);
+    document.getElementById('setAuth').value = '';
     document.getElementById('setProxySource').value = saved.proxy_source || 'unknown';
-    toast('设置已保存，Host/Port/数据库变更需重启', 'success');
+    toast('设置已保存，Host/Port/Bearer token/数据库变更需重启', 'success');
   } catch (error) { toast(error.message, 'error'); }
 }
 
