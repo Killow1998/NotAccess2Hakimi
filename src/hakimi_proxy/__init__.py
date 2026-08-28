@@ -1,3 +1,3 @@
 """hakimi-proxy: OpenAI-compatible Gemini proxy with account pool and traffic metering."""
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

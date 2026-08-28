@@ -1,10 +1,12 @@
 # Task Plan: Hakimi provider acceptance
 
 ## Goal
-Keep the verified AI Studio path intact and complete the AGY adapter protocol for accounts the operator owns and is authorized to use, without storing or exercising exposed third-party credentials.
+Make NA2H a reliable, provider-neutral, single-node Gemini gateway while
+preserving its verified AI Studio and authorized Antigravity paths, public
+OpenAI-compatible contracts, and strict credential boundary.
 
 ## Current Phase
-Phase 33 complete; automated and live acceptance passed
+Phase 36 complete; v0.4.0 reliability acceptance passed
 
 ## Phases
 
@@ -248,6 +250,26 @@ Phase 33 complete; automated and live acceptance passed
 - [x] Pass one post-restart operator live check across all four stages
 - **Status:** complete
 
+### Phase 34: Reliability contract and tracer bullet
+- [x] Define passive liveness/readiness behavior through public API tests
+- [x] Add the first failing readiness test and minimal implementation
+- [x] Preserve `/healthz` as traffic-free process liveness
+- **Status:** complete
+
+### Phase 35: Fault and cancellation acceptance
+- [x] Inventory Phase 24 coverage and reject duplicate reliability tests
+- [x] Add one public-interface regression at a time only for uncovered cancellation/fault behavior
+- [x] Reconfirm classified 429/5xx/timeout behavior never becomes a local 500
+- [x] Reconfirm restart-safe OAuth/config behavior already promised by v0.3
+- **Status:** complete
+
+### Phase 36: Bounded reliability harness and release handoff
+- [x] Add a repeatable local fault-injection/soak command using only fake upstreams
+- [x] Define observable pass/fail signals and a stop rule
+- [x] Run full uv verification and one operator-authorized live smoke only
+- [x] Update release documentation after behavior is proven
+- **Status:** complete
+
 ## Decisions Made
 
 | Decision | Rationale |
@@ -278,3 +300,19 @@ Phase 33 complete; automated and live acceptance passed
 | Phase 31 session-catchup could not lock the read-only default uv cache | 1 | Re-run once with `UV_CACHE_DIR=/tmp/na2h-uv-cache` and `--no-sync` |
 | Two legacy credential-Test fixtures hit real preflight after staged health was added | 1 | Stub successful OAuth/control-plane stages so each test still isolates timeout or 429 inference behavior |
 | Final documentation patch used a stale progress-file context | 1 | Re-read the file tail and apply the same update against the current text |
+| Geju referenced an optional anti-pattern file absent from this installation | 1 | Continue from the complete main skill and output template; goudi risk references loaded successfully |
+| First `/readyz` tracer returned 404 | 1 | Expected RED; add the minimal traffic-free route before specifying unavailable-state status |
+| Empty-pool `/readyz` returned 200 | 1 | Expected RED; return a structured 503 only when the local ACTIVE count is zero |
+| Authenticated app returned 401 for `/readyz` | 1 | Expected RED; add the non-secret readiness endpoint to the public health allowlist |
+| OAuth persistence survey referenced nonexistent `tests/test_config.py` | 1 | Use the actual adapter/admin/main test files discovered by `rg --files` instead of repeating the path |
+| Reliability-gate tracer could not import its module | 1 | Expected RED; implement the bounded fake-upstream module behind the specified `run_gate` interface |
+| Planning-file search ran from the aggregate workspace instead of the repository | 1 | Re-run from `NotAccess2Hakimi`, where the maintained planning files live |
+| Default reliability gate flooded the tool output with per-request INFO logs | 1 | Make the CLI quiet by default, then retry at a smaller bounded scale before the 500-request default |
+| Inline Web UI parser command over-escaped its JavaScript regular expression | 1 | Retry with deterministic `<script>` string splitting instead of shell-sensitive regex syntax |
+| RTK path-filtered documentation diff was parsed as a bad Git revision | 1 | Inspect the full compact diff and targeted file contents instead of repeating the ambiguous invocation |
+| No NA2H process was listening on the configured local port for final smoke | 1 | Start the current checkout on an isolated temporary port, make one authorized request, then stop it |
+| Local smoke client inherited the system HTTP proxy and could not reach loopback in the sandbox | 1 | Disable environment proxy use for the localhost client only; keep the NA2H server's configured upstream proxy unchanged |
+| Proxy-free local smoke client was still denied loopback sockets by sandbox policy | 2 | Request the narrow loopback/network permission required for the one final live smoke; do not change application code |
+| Escalated client could not see the server in the restricted network namespace | 3 | Stop retrying the split topology; co-locate server and client in one authorized process, then shut it down deterministically |
+| First co-located live inference used only 32 output tokens and AGY returned no visible output | 1 | NA2H correctly returned `502 empty_upstream_response`; retry once with the previously proven 512-token tiered-model budget |
+| Planning skill installation has no `check-complete.py` helper at the documented script path | 1 | Verify completion directly from the Phase 34-36 checkboxes and repository acceptance evidence |

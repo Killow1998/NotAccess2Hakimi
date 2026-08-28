@@ -2,7 +2,7 @@
 
 OpenAI-compatible Gemini proxy with account pooling and built-in traffic metering.
 
-> Current release: **v0.3.0** — server-safe OAuth, credential portability, and layered account health.
+> Current release: **v0.4.0** — passive readiness and a bounded local reliability gate.
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
@@ -31,6 +31,8 @@ tokscale-style token cost estimation.
   backup over loopback or HTTPS without copying runtime access tokens.
 - **Layered health**: one manual account check distinguishes OAuth,
   Antigravity control-plane, and real inference failures without background polling.
+- **Reliability gate**: exercise public Responses routing, single-flight leases,
+  failover, and error classification against isolated fake upstreams.
 
 ## Quick Start
 
@@ -68,12 +70,13 @@ curl -fsS http://127.0.0.1:12345/v1/models \
 curl -fsS http://127.0.0.1:12345/v1/responses \
   -H "Authorization: Bearer $HAKIMI_TOKEN" \
   -H 'Content-Type: application/json' \
-  --data '{"model":"antigravity/gemini-3.7-flash-tiered","input":"Reply exactly: OK","max_output_tokens":32}'
+  --data '{"model":"antigravity/gemini-3.7-flash-tiered","input":"Reply exactly: OK","max_output_tokens":512}'
 ```
 
 The final response should contain `output_text: "OK"`. If the pool is
 rate-limited, wait for cooldown or use another authorized credential; a 503 is
-not an authentication success.
+not an authentication success. Tiered reasoning can consume part of the output
+budget internally, so very small limits such as 32 may yield no visible text.
 
 ## Client Configuration
 
@@ -99,13 +102,14 @@ alias `antigravity/gemini-3.7-flash` and forwards it as
 `gemini-3.7-flash-tiered`; `gemini-3.6-flash-high` is a separate catalog model,
 not an automatic alias for 3.7.
 
-### v0.3.0 boundary
+### v0.4.0 boundary
 
 This release targets a trusted local operator and one Uvicorn worker. Each
 credential allows one in-flight request, with a bounded wait and upstream
-failover. Runtime state resets on restart. Virtual keys, per-user quotas,
-distributed workers, and quota prediction are deliberately not part of this
-version.
+failover. `/readyz` exposes traffic-free local readiness, and the reliability
+gate checks the public request path without using stored credentials or network
+traffic. Runtime pool state resets on restart. Virtual keys, per-user quotas,
+distributed workers, and quota prediction are deliberately not part of this version.
 
 ## API Endpoints
 
@@ -118,6 +122,7 @@ version.
 | `/v1/usage/export` | GET | Individual usage log entries |
 | `/v1/credentials` | GET | Credential pool status |
 | `/healthz` | GET | Health check |
+| `/readyz` | GET | Passive readiness; 503 when no credential is locally active |
 | `/` | GET | Single-page Web UI |
 
 ## Web UI
@@ -161,6 +166,12 @@ Runtime fields in `/api/credentials` and `/healthz` show in-flight requests,
 health, cooldown, last latency, and the last safe error. These are in-process
 signals: run a single Uvicorn worker when relying on them; no distributed
 coordination or quota accounting is implied.
+
+`/healthz` is process liveness and remains 200 without credentials. `/readyz`
+is a public, traffic-free readiness check: it returns 200 when at least one
+credential is locally active and 503 when the pool is empty, disabled, or fully
+cooling down. A busy active credential remains ready because requests can wait
+inside the existing bounded queue.
 
 ### API Endpoints (for Web UI)
 
@@ -259,6 +270,10 @@ Cost is computed per-request using a five-dimensional token breakdown
 ```bash
 uv run pytest -v
 
+# Bounded public-API reliability gate; uses only temporary fake credentials,
+# fake upstream responses, and temporary SQLite state
+uv run python -m hakimi_proxy.reliability_gate
+
 # Stable normal runtime (no implicit file watcher)
 HAKIMI_CONFIG=config.local.yaml uv run python -m hakimi_proxy.main
 
@@ -270,7 +285,11 @@ HAKIMI_CONFIG=config.local.yaml uv run uvicorn hakimi_proxy.main:app \
 
 The repository uses `uv` only. Before opening a pull request or publishing a
 new release, run `uv run pytest -q`, `uv run python -m compileall -q src tests`,
-and `git diff --check`.
+`uv run python -m hakimi_proxy.reliability_gate`, and `git diff --check`.
+The gate defaults to 500 requests at concurrency 8, exits nonzero on an
+invariant failure, and emits a JSON verdict. It never reads the operator config
+or calls Google. For a larger bounded run, pass `--requests` (maximum 10,000)
+and `--concurrency` (maximum 64).
 
 ## Project Structure
 
@@ -280,6 +299,7 @@ src/hakimi_proxy/
   model_catalog.py   # Shared model IDs + verified discovery metadata
   credential_bundle.py # Versioned credential backup/restore validation
   diagnostics.py     # Private bounded operational JSONL journal
+  reliability_gate.py # Bounded fake-upstream public API reliability check
   oauth.py           # Local/remote browser OAuth callback + token exchange
   auth.py            # Bearer token middleware
   pool.py            # Credential pool state machine + LRU scheduling

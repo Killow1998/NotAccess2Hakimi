@@ -8,7 +8,7 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from hakimi_proxy import __version__
 from hakimi_proxy.adapters.aistudio import AIStudioAdapter
@@ -154,6 +154,22 @@ def create_app() -> FastAPI:
                 "path": app.state.diagnostics.display_path,
             },
         }
+
+    @app.get("/readyz")
+    async def readyz():
+        pool = app.state.pool
+        status = pool.get_status()
+        active_credentials = pool.get_active_count()
+        snapshot = {
+            "status": "ready" if active_credentials else "not_ready",
+            "active_credentials": active_credentials,
+            "total_credentials": len(pool.all_credentials),
+            "in_flight_requests": sum(item["in_flight"] for item in status),
+        }
+        if active_credentials:
+            return snapshot
+        snapshot["reason"] = "no_active_credentials"
+        return JSONResponse(status_code=503, content=snapshot)
 
     return app
 

@@ -230,3 +230,69 @@
   project payload, or raw upstream body is returned.
 - The final operator check passed all four stages—local, OAuth, control-plane,
   and inference—in 13,668 ms after restarting the updated application.
+
+## v0.4.0 reliability direction (2026-08-27)
+
+- The product target is a provider-neutral, unattended single-node Gemini
+  gateway, not a client-specific dashboard or a multi-tenant SaaS in this phase.
+- Current `/healthz` always returns `status: ok`; the first public contract to
+  prove is a traffic-free `/readyz` that distinguishes process liveness from
+  whether at least one credential is locally schedulable.
+- Reliability work must preserve one-worker/in-memory scheduling, avoid Google
+  background traffic, and use public API behavior plus fake upstream boundaries.
+- Multi-user keys, distributed workers, quota prediction, per-credential
+  concurrency increases, and another WebUI redesign are outside v0.4.0.
+- Phase 24 already added lease, failover, terminal-error, empty-output, and
+  stream-cleanup regressions. v0.4 must inventory those observable contracts
+  before adding tests; duplicating them would create maintenance, not evidence.
+- The first genuine gap remains readiness: `/healthz` is liveness and always
+  reports `ok`, while no public endpoint distinguishes an empty/fully
+  unavailable credential pool without contacting an upstream.
+- Existing public route regressions already prove pre-first-event failover,
+  post-first-event normalized errors, terminal 400 classification, 429
+  failover, empty/invalid upstream rejection, successful-stream lease release,
+  and eight-request single-flight serialization. The uncovered cancellation
+  case is an actual client disconnect while a stream is still open.
+- `/readyz` should be public like `/healthz`, return 200 when at least one
+  credential is in the ACTIVE state, and return 503 when none is active. A busy
+  ACTIVE credential still means the process can accept a bounded queued request;
+  readiness must not flap with every in-flight lease.
+- Starlette's current `StreamingResponse` listens for `http.disconnect` under
+  ASGI spec 2.3 and cancels its streaming task. A public ASGI request can
+  therefore reproduce a real mid-stream disconnect without opening a socket or
+  calling NA2H's private stream generator directly.
+- The public ASGI disconnect regression passes without production changes:
+  after meaningful output, cancellation closes the upstream response and the
+  pool reports `in_flight=0`. The cancellation mechanism was already correct;
+  v0.4 adds evidence rather than another cleanup layer.
+- Public Chat route coverage still lacks direct 5xx and transport-timeout
+  assertions. Both are already classified as retryable cooldown failures and
+  should finish as structured 503 responses, never local `proxy_error` 500s.
+- New public regressions confirm upstream HTTP 503 and `ConnectTimeout` both
+  finish as classified 503 responses and put the affected credential into
+  cooldown; neither becomes a local 500.
+- Existing adapter coverage proves concurrent refresh is single-flight and a
+  rotated refresh token reaches the credential object. The remaining restart
+  question is whether the configured persistence callback writes that rotated
+  value and a fresh config load recovers it.
+- `create_app()` binds the adapter update callback to `save_config`, and the
+  pool holds the same credential object as `app.state.config`. A lifecycle
+  regression can therefore prove restart recovery without adding a persistence
+  abstraction or exposing any token through an HTTP response.
+- The lifecycle regression passes: a rotated refresh token is written through
+  the real application callback, survives `load_config`, and retains mode 0600.
+  No production persistence change is required.
+- A standalone reliability gate must isolate its SQLite config and diagnostics
+  under a temporary working directory before importing/creating the app;
+  otherwise a fake-upstream test could still append local operational files.
+- A 500-request gate cannot use the application's normal INFO verbosity as its
+  automation contract: `httpx` emits one line per synthetic request and hides
+  the actual verdict. The CLI should emit one JSON summary by default while
+  leaving library/test logging behavior unchanged.
+- The default bounded gate passes 500/500 requests at concurrency 8 with one
+  maximum real upstream coroutine, zero leaked leases, ready HTTP 200, and the
+  intended 429-failover/503/timeout public matrix. This is the release stop
+  signal: any mismatch raises and returns a nonzero command status.
+- Live tiered-model acceptance needs a realistic output allowance: 32 tokens
+  produced a valid upstream 200 with no visible output and NA2H correctly
+  returned `502 empty_upstream_response`; 512 tokens completed with exact `OK`.

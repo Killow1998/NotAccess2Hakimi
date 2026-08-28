@@ -4,6 +4,27 @@ All notable changes to NotAccess2Hakimi are documented here.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-27
+
+### Added
+
+- Public, traffic-free `/readyz` readiness: 200 with locally active capacity
+  (including bounded busy capacity), and structured 503 when none is active.
+- A bounded `python -m hakimi_proxy.reliability_gate` command that validates
+  Responses routing, single-flight scheduling, lease cleanup, readiness, 429
+  failover, upstream 503 classification, and transport timeout classification
+  using only temporary fake upstreams.
+
+### Verified
+
+- Added public ASGI regressions for mid-stream client disconnect cleanup,
+  upstream 503/timeout classification, cooldown readiness, and rotated OAuth
+  refresh-token persistence across application restart.
+- Passed the default 500-request reliability gate with all requests completed,
+  one maximum in-flight upstream call, and zero leaked credential leases.
+- Passed one authorized live `/v1/responses` smoke after OAuth refresh with
+  `gemini-3.7-flash-tiered`, returning HTTP 200 and output `OK`.
+
 ### Removed
 
 - Removed the EMP-specific model/provider panel from the Web UI. Standard

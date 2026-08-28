@@ -1,6 +1,6 @@
 [project]
 name = "notaccess2hakimi"
-version = "0.3.0"
+version = "0.4.0"
 description = "OpenAI-compatible Gemini proxy with account pool and traffic metering"
 requires-python = ">=3.11"
 dependencies = [

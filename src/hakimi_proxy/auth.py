@@ -6,7 +6,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-PUBLIC_PATHS = {"/healthz", "/docs", "/openapi.json", "/redoc"}
+PUBLIC_PATHS = {"/healthz", "/readyz", "/docs", "/openapi.json", "/redoc"}
 UI_PATHS = {"/", "/ui", "/favicon.ico"}
 
 

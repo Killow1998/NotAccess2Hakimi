@@ -453,3 +453,102 @@
 - Post-restart live Antigravity acceptance passed in 13,668 ms across local,
   OAuth refresh, `loadCodeAssist` control-plane, and real inference stages.
   Automated tests themselves still generate no real account traffic.
+
+## Phase 34 start (2026-08-27)
+
+- Started the v0.4.0 Reliability Gate after removing the EMP-specific WebUI.
+- Fixed scope: passive readiness, public-interface fault/cancellation behavior,
+  and a bounded fake-upstream soak harness; no multi-user, quota, distributed,
+  or background-probe work.
+- Selected TDD vertical slices: one failing public behavior, minimal green
+  implementation, then the next behavior.
+- Restored the complete task plan, findings, and progress history. The checkout
+  began clean on `main`; no project `CONTEXT.md` or applicable ADR overrides
+  exist, so current public API vocabulary remains the source of truth.
+- Initial code/test survey found substantial Phase 24 fault and cancellation
+  coverage already exists. The plan was narrowed to audit and extend only
+  uncovered public behavior rather than rewrite those tests horizontally.
+- Readiness tracer contract fixed: public/traffic-free, 200 with an ACTIVE
+  credential, 503 with an empty or fully cooldown/disabled pool; in-flight busy
+  capacity does not make the process unready.
+- TDD tracer RED: the first public `/readyz` request returned the expected 404.
+  Added only the local pool snapshot route; unavailable status and auth
+  visibility remain separate slices.
+- TDD unavailable RED: an empty pool still returned 200. Added the explicit
+  `503 not_ready/no_active_credentials` response while preserving the active
+  response shape.
+- TDD auth-boundary RED: `/readyz` returned 401 when Bearer auth was enabled.
+  Added it to the same public monitoring allowlist as `/healthz`.
+- Completed Phase 34: `/healthz` remains unconditional liveness; public
+  `/readyz` is traffic-free, returns 200 for ACTIVE capacity (including busy
+  bounded-queue capacity), and 503 for empty or fully unavailable pools.
+- Added the Phase 35 client-disconnect acceptance test at the ASGI HTTP
+  boundary. It waits for real streamed content, sends `http.disconnect`, then
+  observes upstream closure and pool lease state.
+- The client-disconnect acceptance test passed on its first run; no production
+  change was needed. This confirms the existing stream `finally` cleanup works
+  under actual ASGI cancellation rather than only normal stream completion.
+- Added public 503 and timeout fault regressions; both passed without production
+  changes and prove classified upstream failures do not escape as local 500s.
+- Added a restart-lifecycle regression that saves a private temporary config,
+  refreshes through the real application adapter callback, reloads the YAML,
+  and checks the rotated refresh token plus mode 0600 persistence.
+- The restart-lifecycle regression passed without production changes.
+- Completed Phase 35 with public disconnect, upstream 503, timeout, and restart
+  persistence evidence. Existing Phase 24 behavior was retained rather than
+  wrapped or reimplemented.
+- Reliability-gate tracer RED: test collection failed because
+  `hakimi_proxy.reliability_gate` did not exist. Added the bounded module with
+  temporary config/database/diagnostics isolation and no real upstream path.
+- The first default-scale gate run produced excessive per-request INFO output
+  and its summary was truncated. Classified this as an observability problem,
+  not a repeated test failure; the CLI now suppresses only NA2H/httpx INFO logs
+  and preserves its single JSON result plus warnings/errors.
+- The corrected gate passed first at 50 requests and then at its default 500
+  requests/concurrency 8: 500 successes, one maximum active upstream request,
+  zero leaked leases, ready HTTP 200, and the expected 429/503/timeout matrix.
+- Advanced release metadata and operator documentation to v0.4.0. The gate is
+  explicitly bounded, temporary, fake-upstream-only, and exits nonzero when an
+  asserted public reliability invariant fails.
+- Full Python regression passed 150 tests. Compileall, lock consistency, and
+  diff whitespace checks passed; the first inline Web UI parser invocation
+  failed in the command's over-escaped regex, so the next check uses plain
+  script-tag splitting rather than repeating that shell-sensitive expression.
+- The corrected Web UI JavaScript parse passed. A later RTK path-filtered Git
+  diff treated a documentation path as a revision; final review therefore uses
+  the already verified full diff plus direct targeted file reads.
+- Final source/docs/test diff review found only the scoped v0.4 readiness,
+  reliability evidence, version metadata, and planning records. The working
+  tree contains no unrelated pre-existing edits; new gate files remain
+  intentionally uncommitted pending user authorization.
+- No existing NA2H process was listening on port 8000, so the live acceptance
+  cannot accidentally test stale code. The final smoke will use this checkout
+  on an isolated temporary port and stop that process immediately afterward.
+- The first isolated-port client never reached NA2H because its own httpx call
+  inherited the system proxy and loopback was blocked by the sandbox. This is a
+  test-client transport issue; retry disables `trust_env` only for localhost,
+  while the server retains its configured upstream network behavior.
+- Disabling client proxy inheritance confirmed the remaining failure is the
+  managed sandbox's loopback-socket policy, not NA2H. The next attempt needs
+  narrow runtime permission for the single local/live acceptance call rather
+  than another code or transport change.
+- The authorized client then reached a different network namespace and received
+  connection refused before NA2H. After three transport attempts, reviewed the
+  boundary and stopped the split-process approach: final acceptance must run
+  server and client in one authorized process/network namespace with explicit
+  shutdown.
+- The co-located live path reached OAuth and AGY inference with upstream HTTP
+  200, but a 32-token output budget left no visible tiered-model output. NA2H
+  correctly surfaced `502 empty_upstream_response` instead of false success;
+  the final attempt uses the already proven 512-token budget.
+- Final authorized live acceptance passed in the current v0.4 checkout: OAuth
+  refresh HTTP 200, AGY generation HTTP 200, public `/v1/responses` HTTP 200,
+  and exact output `OK`. The temporary server shut down after the request.
+- Corrected the README smoke budget from 32 to 512 because tiered reasoning can
+  consume a small budget before producing visible text. Phase 36 is complete.
+- The planning package's optional `check-complete.py` helper is absent from this
+  installation. Completion is instead evidenced directly by all Phase 34-36
+  checkboxes plus the recorded full suite, bounded gate, and live smoke results.
+- Final lock consistency and whitespace checks passed. A changed/untracked-file
+  credential-pattern scan checked 14 files and found no exposed token, OAuth
+  secret, or previously supplied account identifier.

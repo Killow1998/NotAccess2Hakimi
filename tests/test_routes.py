@@ -53,6 +53,61 @@ async def test_healthz():
     assert isinstance(data["diagnostics"]["enabled"], bool)
 
 
+async def test_readyz_reports_active_local_capacity_without_upstream_traffic():
+    app = _make_app_with_state()
+
+    resp = await _request(app, "GET", "/readyz")
+
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "status": "ready",
+        "active_credentials": 1,
+        "total_credentials": 1,
+        "in_flight_requests": 0,
+    }
+
+
+async def test_readyz_returns_503_when_no_credential_is_available():
+    app = _make_app_with_state()
+    app.state.pool = CredentialPool()
+
+    resp = await _request(app, "GET", "/readyz")
+
+    assert resp.status_code == 503
+    assert resp.json() == {
+        "status": "not_ready",
+        "reason": "no_active_credentials",
+        "active_credentials": 0,
+        "total_credentials": 0,
+        "in_flight_requests": 0,
+    }
+
+
+async def test_readyz_stays_ready_while_active_credential_is_busy():
+    app = _make_app_with_state()
+    lease = await app.state.pool.acquire(kind="aistudio")
+    try:
+        resp = await _request(app, "GET", "/readyz")
+    finally:
+        await app.state.pool.release(lease)
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ready"
+    assert resp.json()["in_flight_requests"] == 1
+
+
+async def test_readyz_returns_503_when_all_credentials_are_cooling_down():
+    app = _make_app_with_state()
+    credential = app.state.pool.all_credentials[0]
+    app.state.pool.mark_cooldown(credential, retry_after=60)
+
+    resp = await _request(app, "GET", "/readyz")
+
+    assert resp.status_code == 503
+    assert resp.json()["reason"] == "no_active_credentials"
+    assert resp.json()["total_credentials"] == 1
+
+
 async def test_authenticated_root_stays_public():
     """The UI root must remain reachable so users can enter the bearer token."""
     app = create_app()
@@ -138,6 +193,11 @@ async def test_auth_rejects_no_token():
     # /healthz is public
     resp = await _request(app, "GET", "/healthz")
     assert resp.status_code == 200
+
+    # /readyz is also public, but this empty pool is not ready
+    resp = await _request(app, "GET", "/readyz")
+    assert resp.status_code == 503
+    assert resp.json()["status"] == "not_ready"
 
     # /v1/models requires auth
     resp = await _request(app, "GET", "/v1/models")
@@ -307,6 +367,54 @@ async def test_chat_429_fails_over_to_another_credential(monkeypatch):
     assert calls == ["test-ai", "second-ai"]
 
 
+async def test_chat_upstream_503_is_classified_without_local_500(monkeypatch):
+    app = _make_app_with_state()
+
+    async def fake_forward(body, cred, stream, client):
+        return httpx.Response(
+            503,
+            request=httpx.Request("POST", "https://upstream.test"),
+            json={"error": {"status": "UNAVAILABLE", "message": "temporarily unavailable"}},
+        )
+
+    monkeypatch.setattr(app.state.aistudio, "forward", fake_forward)
+    response = await _request(app, "POST", "/v1/chat/completions", json={
+        "model": "gemini-3.7-flash",
+        "messages": [{"role": "user", "content": "hello"}],
+    })
+
+    assert response.status_code == 503
+    assert response.json()["error"] == {
+        "type": "upstream_server_error",
+        "message": "UNAVAILABLE: temporarily unavailable",
+        "upstream_status": 503,
+    }
+    assert app.state.pool.get_status()[0]["state"] == "cooldown"
+
+
+async def test_chat_upstream_timeout_is_classified_without_local_500(monkeypatch):
+    app = _make_app_with_state()
+
+    async def fake_forward(body, cred, stream, client):
+        raise httpx.ConnectTimeout(
+            "upstream slow",
+            request=httpx.Request("POST", "https://upstream.test"),
+        )
+
+    monkeypatch.setattr(app.state.aistudio, "forward", fake_forward)
+    response = await _request(app, "POST", "/v1/chat/completions", json={
+        "model": "gemini-3.7-flash",
+        "messages": [{"role": "user", "content": "hello"}],
+    })
+
+    assert response.status_code == 503
+    assert response.json()["error"] == {
+        "type": "upstream_transport_error",
+        "message": "ConnectTimeout: upstream connection failed",
+    }
+    assert app.state.pool.get_status()[0]["state"] == "cooldown"
+
+
 async def test_chat_empty_success_is_rejected(monkeypatch):
     app = _make_app_with_state()
 
@@ -366,6 +474,69 @@ async def test_chat_stream_releases_single_flight_lease(monkeypatch):
 
     assert response.status_code == 200
     assert "ok" in response.text
+    assert app.state.pool.get_status()[0]["in_flight"] == 0
+
+
+async def test_chat_stream_client_disconnect_releases_single_flight_lease(monkeypatch):
+    app = _make_app_with_state()
+    upstream_response = None
+
+    class HangingAfterFirst(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b'data: {"choices":[{"delta":{"content":"hello"},"finish_reason":null}]}\n\n'
+            await asyncio.Event().wait()
+
+    async def fake_forward(body, cred, stream, client):
+        nonlocal upstream_response
+        upstream_response = httpx.Response(
+            200,
+            request=httpx.Request("POST", "https://upstream.test"),
+            stream=HangingAfterFirst(),
+        )
+        return upstream_response
+
+    monkeypatch.setattr(app.state.aistudio, "forward", fake_forward)
+    body = json.dumps({
+        "model": "gemini-3.7-flash",
+        "messages": [{"role": "user", "content": "hello"}],
+        "stream": True,
+    }).encode()
+    request_sent = False
+    disconnect = asyncio.Event()
+    messages = []
+
+    async def receive():
+        nonlocal request_sent
+        if not request_sent:
+            request_sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        await disconnect.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        messages.append(message)
+        if message["type"] == "http.response.body" and b"hello" in message.get("body", b""):
+            disconnect.set()
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/v1/chat/completions",
+        "raw_path": b"/v1/chat/completions",
+        "query_string": b"",
+        "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())],
+        "client": ("127.0.0.1", 50000),
+        "server": ("testserver", 80),
+        "root_path": "",
+    }
+
+    await asyncio.wait_for(app(scope, receive, send), timeout=1)
+
+    assert any(b"hello" in message.get("body", b"") for message in messages)
+    assert upstream_response is not None and upstream_response.is_closed
     assert app.state.pool.get_status()[0]["in_flight"] == 0
 
 
