@@ -4,6 +4,30 @@ All notable changes to NotAccess2Hakimi are documented here.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-28
+
+### Added
+
+- A public two-turn Agent compatibility scenario in the bounded reliability
+  gate: raw fake Antigravity SSE emits a signed function call, the public
+  Responses output is replayed with its tool result, and the second turn must
+  finish with visible assistant text and no credential lease leak.
+- A read-only GitHub Actions workflow with immutable checkout/setup-uv actions,
+  locked uv dependencies, tests, compileall, the credential-free reliability
+  gate, and package build verification.
+
+### Changed
+
+- Centralized creation of request-scoped upstream HTTP clients behind one app
+  factory so acceptance can replace only the external transport while keeping
+  all routing and protocol conversion real.
+
+### Verified
+
+- Proved stable function-call/result IDs and native thought-signature replay
+  across two public streaming `/v1/responses` requests using no real credential
+  or network traffic.
+
 ## [0.4.0] - 2026-08-27
 
 ### Added

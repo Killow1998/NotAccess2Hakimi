@@ -17,3 +17,12 @@ async def test_reliability_gate_exercises_public_success_and_fault_paths():
         "upstream_503": {"http_status": 503, "error_type": "upstream_server_error"},
         "timeout": {"http_status": 503, "error_type": "upstream_transport_error"},
     }
+    assert result["agent_tool_round_trip"] == {
+        "first_turn_http_status": 200,
+        "second_turn_http_status": 200,
+        "call_id": "call_agent_1",
+        "signature_replayed": True,
+        "result_paired": True,
+        "final_output": "DONE",
+        "leaked_leases": 0,
+    }

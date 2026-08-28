@@ -94,7 +94,7 @@ async def _run_chat_completion(request: Request, body: dict):
 
         started = time.perf_counter()
         proxy_url = request.app.state.config.proxy or None
-        client = httpx.AsyncClient(proxy=proxy_url) if proxy_url else httpx.AsyncClient()
+        client = request.app.state.upstream_client_factory(proxy_url)
         resp: httpx.Response | None = None
         try:
             resp = await adapter.forward(body, cred, stream, client)

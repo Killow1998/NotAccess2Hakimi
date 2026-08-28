@@ -2,7 +2,7 @@
 
 OpenAI-compatible Gemini proxy with account pooling and built-in traffic metering.
 
-> Current release: **v0.4.0** — passive readiness and a bounded local reliability gate.
+> Current release: **v0.5.0** — public Agent tool-loop compatibility and continuous verification.
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
@@ -33,6 +33,8 @@ tokscale-style token cost estimation.
   Antigravity control-plane, and real inference failures without background polling.
 - **Reliability gate**: exercise public Responses routing, single-flight leases,
   failover, and error classification against isolated fake upstreams.
+- **Agent compatibility gate**: stream a signed tool call through the public
+  Responses API, replay its result, and verify the final assistant turn end to end.
 
 ## Quick Start
 
@@ -102,14 +104,15 @@ alias `antigravity/gemini-3.7-flash` and forwards it as
 `gemini-3.7-flash-tiered`; `gemini-3.6-flash-high` is a separate catalog model,
 not an automatic alias for 3.7.
 
-### v0.4.0 boundary
+### v0.5.0 boundary
 
 This release targets a trusted local operator and one Uvicorn worker. Each
 credential allows one in-flight request, with a bounded wait and upstream
 failover. `/readyz` exposes traffic-free local readiness, and the reliability
-gate checks the public request path without using stored credentials or network
-traffic. Runtime pool state resets on restart. Virtual keys, per-user quotas,
-distributed workers, and quota prediction are deliberately not part of this version.
+gate checks text, failure, and signed Agent tool-loop paths without using stored
+credentials or network traffic. Runtime pool state resets on restart. Virtual
+keys, per-user quotas, distributed workers, and quota prediction are deliberately
+not part of this version.
 
 ## API Endpoints
 
@@ -287,9 +290,11 @@ The repository uses `uv` only. Before opening a pull request or publishing a
 new release, run `uv run pytest -q`, `uv run python -m compileall -q src tests`,
 `uv run python -m hakimi_proxy.reliability_gate`, and `git diff --check`.
 The gate defaults to 500 requests at concurrency 8, exits nonzero on an
-invariant failure, and emits a JSON verdict. It never reads the operator config
+invariant failure, and emits a JSON verdict. It also performs a complete signed
+tool-call/tool-result Responses round trip. It never reads the operator config
 or calls Google. For a larger bounded run, pass `--requests` (maximum 10,000)
-and `--concurrency` (maximum 64).
+and `--concurrency` (maximum 64). GitHub Actions runs the same locked-uv tests,
+compile, gate, and package build without repository secrets.
 
 ## Project Structure
 

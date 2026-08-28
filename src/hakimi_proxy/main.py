@@ -7,6 +7,7 @@ import sys
 import time
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -71,6 +72,9 @@ def create_app() -> FastAPI:
     app.state.store = UsageStore(config.db_path)
     app.state.aistudio = AIStudioAdapter(proxy=config.proxy)
     app.state.antigravity = AntigravityAdapter(proxy=config.proxy)
+    app.state.upstream_client_factory = lambda proxy_url=None: (
+        httpx.AsyncClient(proxy=proxy_url) if proxy_url else httpx.AsyncClient()
+    )
     # Persist OAuth refresh-token rotation without exposing credentials to the UI.
     app.state.antigravity.on_credential_update = lambda: save_config(app.state.config, get_config_path())
     oauth_credential = next(iter(config.antigravity_credentials), None)

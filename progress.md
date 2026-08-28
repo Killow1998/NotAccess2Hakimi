@@ -552,3 +552,64 @@
 - Final lock consistency and whitespace checks passed. A changed/untracked-file
   credential-pattern scan checked 14 files and found no exposed token, OAuth
   secret, or previously supplied account identifier.
+
+## Phase 37 start (2026-08-28)
+
+- Started v0.5.0 after user approval of the Agent Compatibility Gate direction.
+- Locked scope to one public streaming tool-call/tool-result tracer, integration
+  into the fake-upstream reliability gate, locked-uv CI, and release metadata.
+- Current checkout begins clean on `main` at the pushed v0.4.0 commit. No
+  `CONTEXT.md` or applicable ADR changes override the established Responses,
+  tool-call, reasoning-carrier, credential-lease, and reliability vocabulary.
+- Confirmed the current suite has rich unit/route coverage for Responses tools,
+  custom tools, images, detached reasoning carriers, streaming errors, and
+  single-flight cleanup, but no one fake-upstream gate spans the full two-turn
+  Agent lifecycle through the public interface.
+- Selected the external HTTP transport as the only fake boundary for the tracer.
+  The real Responses facade, shared Chat route, credential pool, Antigravity
+  request/response conversion, SSE mapping, usage handling, and lease cleanup
+  will all execute unchanged.
+- Rejected reusing the existing mocked-forward route pattern because it bypasses
+  real AGY request conversion. The tracer will feed raw Cloud Code SSE through
+  `httpx.MockTransport`, parse public SSE output, then construct the second
+  public Responses request from those emitted items.
+- Fixed the first slice to a normal function tool with stable call ID and native
+  thought signature. This exercises the same signature/result replay boundary
+  that previously caused live 400s while keeping custom-tool ID normalization
+  as already-covered behavior rather than widening the tracer.
+- TDD RED confirmed: the public gate result has no `agent_tool_round_trip`
+  evidence. The failure is the expected missing capability (`KeyError`), not an
+  existing reliability regression.
+- The first GREEN attempt executes both public turns but fails the final strict
+  contract comparison. Validation intentionally hides no requirement; next
+  diagnosis inspects only the safe result booleans/IDs/output before deciding
+  whether the defect is the tracer fixture or NA2H protocol behavior.
+- Diagnosis isolated the only mismatch to `result_paired=false`: the tracer had
+  used an unsupported raw-dict tool output. Corrected it to a JSON string, the
+  same public Responses shape used by actual Codex tool results; no protocol
+  implementation was weakened.
+- Completed Phases 37-38. The gate now crosses the public Responses interface
+  twice through raw fake Cloud Code SSE and real AGY conversion, proving stable
+  call ID, native signature replay, paired structured result, final `DONE`, and
+  zero leaked leases. Focused adapter/route/Responses/gate regression passed 75
+  tests.
+- Began Phase 39 from a scoped working tree. Verified the official current
+  immutable checkout/setup-uv action commits and selected the already proven
+  local uv 0.11.1 as the CI tool version; no floating action or uv tag will be
+  introduced.
+- Focused v0.5/version tests, lock consistency, and structural workflow parsing
+  passed. The first clean package build reached Hatchling isolation but the
+  managed sandbox blocked PyPI network access; retry requires dependency-only
+  network permission, not a project change.
+- Completed Phase 39. The isolated build succeeded after dependency-download
+  permission and produced both `notaccess2hakimi-0.5.0` sdist and wheel; the
+  temporary build directory was then removed. CI and package/app/lock/docs
+  metadata now consistently target v0.5.0.
+- Phase 40 behavioral acceptance passed: all 150 tests, compileall, and lock
+  consistency succeeded. The default 500-request gate passed with 500
+  successes, one maximum active upstream, zero leaked leases, correct fault
+  classifications, and a complete signed two-turn Agent result ending `DONE`.
+- Final workflow structure, diff whitespace, and 14-file secret scan passed.
+  Reviewed the full runtime/harness diff and refactored only duplicate temporary
+  app construction after GREEN. Phase 40 is complete; no live Google request was
+  run because the changed boundary is fully covered by the raw fake transport.

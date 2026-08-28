@@ -296,3 +296,64 @@
 - Live tiered-model acceptance needs a realistic output allowance: 32 tokens
   produced a valid upstream 200 with no visible output and NA2H correctly
   returned `502 empty_upstream_response`; 512 tokens completed with exact `OK`.
+
+## v0.5.0 Agent compatibility direction (2026-08-28)
+
+- NA2H's critical product contract is a complete Codex Agent session, not more
+  credential-management surface. Existing tests cover individual conversion
+  behaviors, while the v0.4 reliability gate exercises only simple text output.
+- The first v0.5 proof must cross the public `/v1/responses` interface twice:
+  stream a signed tool call, then replay its tool result and finish with visible
+  assistant text. Fake upstream I/O is the only permitted mock boundary.
+- The existing single-worker, one-flight-per-credential runtime remains the
+  release contract. Multi-user keys, quota prediction, additional provider
+  aliases, higher per-account concurrency, and Web UI redesign stay out of v0.5.
+- There is no repository CI workflow today, so the proven fake-upstream gate is
+  not automatically enforced on pushes. CI belongs after the public tracer is
+  green, not before it.
+- Astral's current official GitHub Actions guide (checked 2026-08-28) pins
+  `astral-sh/setup-uv` v9.0.0 at commit
+  `c771a70e6277c0a99b617c7a806ffedaca235ff9` and `actions/checkout` v7.0.1 at
+  `3d3c42e5aac5ba805825da76410c181273ba90b1`. Use these immutable commits with
+  `contents: read`, not floating tags.
+- The current verified local toolchain is uv 0.11.1. CI should pin that exact uv
+  version for reproducibility while the setup action itself remains pinned to
+  the current immutable v9 commit. `dist/` is already ignored, so local wheel
+  verification will not pollute the checkout.
+- The public Chat route creates its upstream `httpx.AsyncClient` at request
+  time, while `AntigravityAdapter.forward()` owns real OpenAI→Gemini conversion
+  and sends through that client. A test can therefore replace only the external
+  HTTP transport, use a non-expiring fake OAuth credential with a cached fake
+  project, and keep every NA2H conversion/route/SSE layer real.
+- The two-turn test must not monkeypatch `adapter.forward`, because that would
+  bypass exactly the Gemini payload and thought-signature replay contract v0.5
+  is meant to prove.
+- Existing route tests do patch `adapter.forward`; they prove Responses SSE
+  formatting but not the public Responses→Chat→Gemini request or raw AGY
+  Gemini→Chat→Responses response chain. The new tracer closes this evidence gap
+  rather than duplicating their assertions.
+- A raw AGY streaming function-call event can include both a stable
+  `functionCall.id` and `thoughtSignature`. The public Responses stream must
+  expose the signature as a reasoning carrier and on the tool item so the
+  caller can replay both with a matching tool output in turn two.
+- Responses history already accepts either a reasoning carrier immediately
+  before a call or the tool item's `extra_content`; it reconstructs one Chat
+  assistant tool-call message followed by ordered tool outputs. The tracer can
+  replay the exact completed public output items without inventing private data.
+- AGY stream conversion preserves an explicit `functionCall.id`; using a stable
+  fake `call_agent_1` lets the test assert request/result pairing without
+  depending on generated UUIDs. Normal function tools avoid custom-tool item-ID
+  normalization in the first vertical slice.
+- The first implementation mismatch was fixture-side: Responses
+  `function_call_output.output` is replayed as textual tool content, while the
+  tracer supplied a raw dict that `_content_text` correctly did not treat as a
+  content part. A JSON string matches Codex's public tool-result shape and lets
+  the real Gemini converter recover the structured response object.
+- Final review confirms the only runtime-path change is an injectable
+  request-scoped HTTP client factory; routing, scheduling, AGY conversion, and
+  SSE code are otherwise unchanged. No live generation smoke is proportionate
+  for this fake-transport/CI release because the new gate directly exercises
+  the changed factory through both public turns.
+- The hosted GitHub workflow cannot run until these changes are pushed. Local
+  commands equivalent to every workflow step have passed; release reporting
+  must distinguish that from an actual GitHub Actions run.

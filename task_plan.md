@@ -6,7 +6,7 @@ preserving its verified AI Studio and authorized Antigravity paths, public
 OpenAI-compatible contracts, and strict credential boundary.
 
 ## Current Phase
-Phase 36 complete; v0.4.0 reliability acceptance passed
+Phase 40 complete; v0.5.0 Agent compatibility acceptance passed
 
 ## Phases
 
@@ -270,6 +270,30 @@ Phase 36 complete; v0.4.0 reliability acceptance passed
 - [x] Update release documentation after behavior is proven
 - **Status:** complete
 
+### Phase 37: Public Agent tool-loop tracer
+- [x] Specify one complete `/v1/responses` streaming tool-call and tool-result round trip
+- [x] Add one failing public-interface tracer using only a fake Antigravity boundary
+- [x] Make the smallest protocol change required for the tracer to pass
+- **Status:** complete
+
+### Phase 38: Agent compatibility reliability gate
+- [x] Add the proven tool round trip to the bounded fake-upstream gate
+- [x] Preserve thought signatures, call/result pairing, terminal SSE semantics, and lease cleanup
+- [x] Keep the gate credential-free and network-free
+- **Status:** complete
+
+### Phase 39: Continuous verification and v0.5 release metadata
+- [x] Add one GitHub Actions workflow using locked uv dependencies
+- [x] Configure CI to run tests, compileall, reliability gate, and wheel build
+- [x] Advance package/lock/docs/changelog to v0.5.0 only after behavior is proven
+- **Status:** complete
+
+### Phase 40: v0.5 acceptance and handoff
+- [x] Run focused and full uv verification
+- [x] Run the default bounded reliability gate and static/diff/secret checks
+- [x] Review the final scope and report any live smoke intentionally not run
+- **Status:** complete
+
 ## Decisions Made
 
 | Decision | Rationale |
@@ -316,3 +340,6 @@ Phase 36 complete; v0.4.0 reliability acceptance passed
 | Escalated client could not see the server in the restricted network namespace | 3 | Stop retrying the split topology; co-locate server and client in one authorized process, then shut it down deterministically |
 | First co-located live inference used only 32 output tokens and AGY returned no visible output | 1 | NA2H correctly returned `502 empty_upstream_response`; retry once with the previously proven 512-token tiered-model budget |
 | Planning skill installation has no `check-complete.py` helper at the documented script path | 1 | Verify completion directly from the Phase 34-36 checkboxes and repository acceptance evidence |
+| v0.5 reliability tracer lacked `agent_tool_round_trip` | 1 | Expected RED; implement the public two-turn AGY scenario behind the existing bounded gate result |
+| First Agent tracer implementation reached validation with a mismatched result | 1 | Inspect the isolated public result fields before changing protocol code; do not weaken the expected contract |
+| Local `uv build` could not fetch isolated Hatchling requirements in the network sandbox | 1 | Re-run the same package build with narrow dependency-download permission; CI remains responsible for clean hosted resolution |

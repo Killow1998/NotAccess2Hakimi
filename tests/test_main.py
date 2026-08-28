@@ -21,7 +21,7 @@ def test_main_runs_prebuilt_app_without_implicit_reload(monkeypatch):
     assert captured["kwargs"]["host"] == main_module.app.state.config.host
     assert captured["kwargs"]["port"] == main_module.app.state.config.port
     assert "reload" not in captured["kwargs"]
-    assert main_module.app.version == "0.4.0"
+    assert main_module.app.version == "0.5.0"
 
 
 async def test_rotated_refresh_token_survives_application_restart(monkeypatch, tmp_path):
