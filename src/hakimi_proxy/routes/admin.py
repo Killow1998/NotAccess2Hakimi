@@ -480,6 +480,7 @@ async def update_antigravity(cred_id: str, cred: AntigravityCredUpdate, request:
             else:
                 project = c.project if cred.project is None else cred.project.strip()
                 access_token, expires_at = c.access_token, c.expires_at
+            quota_identity_changed = oauth_changed or project != c.project
             config.antigravity_credentials[i] = AntigravityCredential(
                 id=c.id,
                 client_id=client_id,
@@ -492,6 +493,8 @@ async def update_antigravity(cred_id: str, cred: AntigravityCredUpdate, request:
                 auto_onboard=c.auto_onboard if cred.auto_onboard is None else cred.auto_onboard,
             )
             _load_and_save(request, config)
+            if quota_identity_changed:
+                request.app.state.antigravity.clear_cached_quota(cred_id)
             return {"status": "ok"}
     return JSONResponse(status_code=404, content={"error": {"message": "Not found"}})
 
@@ -504,6 +507,7 @@ async def delete_antigravity(cred_id: str, request: Request):
     if len(config.antigravity_credentials) == before:
         return JSONResponse(status_code=404, content={"error": {"message": "Not found"}})
     _load_and_save(request, config)
+    request.app.state.antigravity.clear_cached_quota(cred_id)
     logger.info("Antigravity credential deleted: %s", cred_id)
     return {"status": "ok"}
 
@@ -541,10 +545,49 @@ async def list_credentials(request: Request):
             "project": c.project,
             "auto_onboard": c.auto_onboard,
             "kind": "antigravity",
+            "quota": request.app.state.antigravity.get_cached_quota(c.id),
             **_runtime_status(s),
         })
 
     return {"aistudio": aistudio, "antigravity": antigravity}
+
+
+@router.post("/credentials/antigravity/{cred_id}/quota/refresh")
+async def refresh_antigravity_quota(cred_id: str, request: Request):
+    """Explicitly refresh one account's upstream-reported quota snapshot."""
+    pool = request.app.state.pool
+    credential = next(
+        (c for c in pool.all_credentials if c.kind == "antigravity" and c.id == cred_id),
+        None,
+    )
+    if credential is None:
+        return JSONResponse(status_code=404, content={"error": {"message": "Credential not found"}})
+
+    try:
+        credential = await pool.acquire(
+            kind="antigravity",
+            credential_id=cred_id,
+            timeout_seconds=30,
+        )
+    except Exception as exc:
+        if getattr(exc, "reason", "") == "busy_timeout":
+            return JSONResponse(
+                status_code=503,
+                content={"error": {"type": "capacity_exhausted", "message": "Credential is busy"}},
+            )
+        return JSONResponse(status_code=404, content={"error": {"message": "Credential not available"}})
+
+    proxy_url = request.app.state.config.proxy or None
+    client = httpx.AsyncClient(proxy=proxy_url) if proxy_url else httpx.AsyncClient()
+    try:
+        return await request.app.state.antigravity.fetch_quota(credential, client)
+    except Exception as exc:
+        failure = classify_exception(exc)
+        logger.warning("Quota refresh failed for %s: %s", cred_id, failure.message)
+        return JSONResponse(status_code=502, content={"error": failure.public()})
+    finally:
+        await client.aclose()
+        await pool.release(credential)
 
 
 @router.post("/credentials/{kind}/{cred_id}/test")
@@ -675,34 +718,62 @@ async def usage_summary(request: Request):
     total_requests = sum(r.get("request_count", 0) for r in rows)
     total_input = sum(r.get("input_tokens", 0) for r in rows)
     total_output = sum(r.get("output_tokens", 0) for r in rows)
+    total_cache_read = sum(r.get("cache_read_tokens", 0) for r in rows)
+    total_cache_write = sum(r.get("cache_write_tokens", 0) for r in rows)
+    total_reasoning = sum(r.get("reasoning_tokens", 0) for r in rows)
 
     # Per-credential breakdown
     by_cred: dict[str, dict] = {}
     for r in rows:
         cid = r["credential_id"]
         if cid not in by_cred:
-            by_cred[cid] = {"cost_usd": 0, "requests": 0, "input_tokens": 0, "output_tokens": 0}
+            by_cred[cid] = {
+                "cost_usd": 0,
+                "requests": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_read_tokens": 0,
+                "cache_write_tokens": 0,
+                "reasoning_tokens": 0,
+            }
         by_cred[cid]["cost_usd"] += r.get("cost_usd", 0)
         by_cred[cid]["requests"] += r.get("request_count", 0)
         by_cred[cid]["input_tokens"] += r.get("input_tokens", 0)
         by_cred[cid]["output_tokens"] += r.get("output_tokens", 0)
+        by_cred[cid]["cache_read_tokens"] += r.get("cache_read_tokens", 0)
+        by_cred[cid]["cache_write_tokens"] += r.get("cache_write_tokens", 0)
+        by_cred[cid]["reasoning_tokens"] += r.get("reasoning_tokens", 0)
 
     # Per-model breakdown
     by_model: dict[str, dict] = {}
     for r in rows:
         m = r["model"]
         if m not in by_model:
-            by_model[m] = {"cost_usd": 0, "requests": 0, "input_tokens": 0, "output_tokens": 0}
+            by_model[m] = {
+                "cost_usd": 0,
+                "requests": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_read_tokens": 0,
+                "cache_write_tokens": 0,
+                "reasoning_tokens": 0,
+            }
         by_model[m]["cost_usd"] += r.get("cost_usd", 0)
         by_model[m]["requests"] += r.get("request_count", 0)
         by_model[m]["input_tokens"] += r.get("input_tokens", 0)
         by_model[m]["output_tokens"] += r.get("output_tokens", 0)
+        by_model[m]["cache_read_tokens"] += r.get("cache_read_tokens", 0)
+        by_model[m]["cache_write_tokens"] += r.get("cache_write_tokens", 0)
+        by_model[m]["reasoning_tokens"] += r.get("reasoning_tokens", 0)
 
     return {
         "total_cost_usd": round(total_cost, 6),
         "total_requests": total_requests,
         "total_input_tokens": total_input,
         "total_output_tokens": total_output,
+        "total_cache_read_tokens": total_cache_read,
+        "total_cache_write_tokens": total_cache_write,
+        "total_reasoning_tokens": total_reasoning,
         "by_credential": [
             {"credential_id": k, **v} for k, v in sorted(by_cred.items(), key=lambda x: -x[1]["cost_usd"])
         ],

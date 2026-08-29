@@ -13,6 +13,7 @@ from hakimi_proxy.main import create_app
 from hakimi_proxy.pool import CredentialPool
 from hakimi_proxy.adapters.aistudio import AIStudioAdapter
 from hakimi_proxy.adapters.antigravity import AntigravityAdapter
+from hakimi_proxy.metering.models import TokenBreakdown, UsageRecord
 from hakimi_proxy.metering.store import UsageStore
 
 
@@ -192,6 +193,29 @@ async def test_usage_empty():
     data = resp.json()
     assert data["summary"]["total_requests"] == 0
     assert data["records"] == []
+
+
+async def test_usage_summary_exposes_detailed_token_dimensions(tmp_path):
+    app = _make_app_with_state()
+    app.state.store = UsageStore(tmp_path / "usage.db")
+    app.state.store.record(UsageRecord(
+        credential_id="ag-test",
+        model="antigravity/gemini-3.7-flash-tiered",
+        upstream="antigravity",
+        tokens=TokenBreakdown(input=6, output=2, cache_read=4, cache_write=3, reasoning=5),
+        cost_usd=0.0000302,
+    ))
+
+    response = await _request(app, "GET", "/v1/usage")
+
+    assert response.status_code == 200
+    summary = response.json()["summary"]
+    assert summary["total_input_tokens"] == 6
+    assert summary["total_output_tokens"] == 2
+    assert summary["total_cache_read_tokens"] == 4
+    assert summary["total_cache_write_tokens"] == 3
+    assert summary["total_reasoning_tokens"] == 5
+    assert summary["total_cost_usd"] == 0.00003
 
 
 async def test_auth_rejects_no_token():

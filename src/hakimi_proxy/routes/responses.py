@@ -382,12 +382,23 @@ def responses_to_chat(body: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def _chat_usage_to_response(usage: dict[str, Any]) -> dict[str, int]:
-    return {
+def _chat_usage_to_response(usage: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {
         "input_tokens": int(usage.get("prompt_tokens", 0) or 0),
         "output_tokens": int(usage.get("completion_tokens", 0) or 0),
         "total_tokens": int(usage.get("total_tokens", 0) or 0),
     }
+    prompt_details = usage.get("prompt_tokens_details")
+    if isinstance(prompt_details, dict):
+        result["input_tokens_details"] = {
+            "cached_tokens": int(prompt_details.get("cached_tokens", 0) or 0),
+        }
+    completion_details = usage.get("completion_tokens_details")
+    if isinstance(completion_details, dict):
+        result["output_tokens_details"] = {
+            "reasoning_tokens": int(completion_details.get("reasoning_tokens", 0) or 0),
+        }
+    return result
 
 
 def _chat_to_response(

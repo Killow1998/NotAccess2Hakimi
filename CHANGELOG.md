@@ -4,6 +4,35 @@ All notable changes to NotAccess2Hakimi are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- A manual Antigravity quota refresh on each credential card, backed primarily
+  by the upstream Gemini shared-pool 5h and Weekly/7d windows and an in-memory
+  last-successful snapshot. Page loads never poll Google.
+- Cached-input, cache-write, and reasoning-token totals in the usage APIs and
+  dashboard, including detailed usage fields in Chat and Responses output.
+
+### Fixed
+
+- API-equivalent cost estimation for routed Antigravity tier IDs such as
+  `gemini-3.7-flash-tiered`, including cached-input and thinking-token prices.
+- Quota lookup failures no longer disturb inference health or erase the last
+  successful quota snapshot.
+
+### Changed
+
+- Usage cost labels now explicitly describe an API list-price equivalent, not
+  an Antigravity bill or account balance.
+- Replaced misleading per-model quota rows with responsive, accessible shared
+  window progress bars; model catalog quota data is now only a degraded
+  availability fallback.
+
+### Verified
+
+- Passed 175 automated tests, Python compilation, lock validation, inline Web
+  UI JavaScript parsing, and the 500-request fake-upstream Agent reliability
+  gate with zero leaked credential leases.
+
 ## [0.6.0] - 2026-08-28
 
 ### Added

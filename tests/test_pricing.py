@@ -26,12 +26,11 @@ def test_compute_cost_with_cache_and_reasoning():
     p = get_pricing("gemini-3.7-flash")
     usage = TokenBreakdown(input=1000, output=500, cache_read=200, cache_write=100, reasoning=300)
     cost = compute_cost(p, usage)
-    # cache_read price is 0 in built-in (no cache pricing configured)
-    # reasoning defaults to output price
+    # Cached input uses the reduced input rate; reasoning uses output pricing.
     expected = (
         1000 * 0.75 / 1e6
         + 500 * 3.75 / 1e6
-        + 200 * 0.0  # cache_read
+        + 200 * 0.075 / 1e6
         + 100 * 0.0  # cache_write
         + 300 * 3.75 / 1e6  # reasoning defaults to output price
     )
@@ -49,6 +48,17 @@ def test_get_pricing_strips_prefix():
     p = get_pricing("google/gemini-3.7-flash")
     assert p is not None
     assert abs(p.input_cost_per_token - 0.75 / 1_000_000) < 1e-15
+
+
+def test_tiered_antigravity_model_uses_canonical_pricing():
+    p = get_pricing("antigravity/gemini-3.7-flash-tiered")
+    assert p is not None
+    assert abs(p.input_cost_per_token - 0.75 / 1_000_000) < 1e-15
+    assert abs(p.cache_read_input_token_cost - 0.075 / 1_000_000) < 1e-15
+
+    usage = TokenBreakdown(input=600, cache_read=400, output=100, reasoning=500)
+    expected = (600 * 0.75 + 400 * 0.075 + 600 * 3.75) / 1_000_000
+    assert abs(compute_cost_for_model("antigravity/gemini-3.7-flash-tiered", usage) - expected) < 1e-12
 
 
 def test_builtin_pricing_covers_key_models():

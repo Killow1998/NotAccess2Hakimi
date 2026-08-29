@@ -29,6 +29,9 @@ async def get_usage(request: Request):
     total_requests = sum(r.get("request_count", 0) for r in rows)
     total_input = sum(r.get("input_tokens", 0) for r in rows)
     total_output = sum(r.get("output_tokens", 0) for r in rows)
+    total_cache_read = sum(r.get("cache_read_tokens", 0) for r in rows)
+    total_cache_write = sum(r.get("cache_write_tokens", 0) for r in rows)
+    total_reasoning = sum(r.get("reasoning_tokens", 0) for r in rows)
 
     return JSONResponse(content={
         "summary": {
@@ -36,6 +39,9 @@ async def get_usage(request: Request):
             "total_requests": total_requests,
             "total_input_tokens": total_input,
             "total_output_tokens": total_output,
+            "total_cache_read_tokens": total_cache_read,
+            "total_cache_write_tokens": total_cache_write,
+            "total_reasoning_tokens": total_reasoning,
         },
         "records": rows,
     })

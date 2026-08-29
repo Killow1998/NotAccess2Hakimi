@@ -6,7 +6,7 @@ preserving its verified AI Studio and authorized Antigravity paths, public
 OpenAI-compatible contracts, and strict credential boundary.
 
 ## Current Phase
-Phase 46 complete; automatic first-start key provisioning accepted
+Phase 48 complete; shared-window quota model and progress-bar UI
 
 ## Phases
 
@@ -334,6 +334,23 @@ Phase 46 complete; automatic first-start key provisioning accepted
 - [x] Align first-start documentation and rerun CLI/full security acceptance
 - **Status:** complete
 
+### Phase 47: Antigravity quota visibility and metering correctness
+- [x] Preserve cached-input and reasoning token details through non-streaming and streaming AGY conversion
+- [x] Canonicalize routed AGY model variants for pricing and use current cached-input pricing
+- [x] Expose cache/reasoning totals and clearly label equivalent API cost in the existing usage UI
+- [x] Add manual, per-credential AGY quota refresh with bounded endpoint fallback and an in-memory last-result cache
+- [x] Show model quota/reset snapshots in the existing credential card without background Google polling
+- [x] Run focused/full tests, Web UI parsing, reliability gate, and diff/secret checks
+- **Status:** complete
+
+### Phase 48: Shared-window quota model and progress-bar UI
+- [x] Reproduce the grouped `retrieveUserQuotaSummary` response and make it the primary quota contract
+- [x] Preserve `fetchAvailableModels` only as an explicitly degraded availability fallback
+- [x] Replace per-model quota rows with Gemini 5h and Weekly/7d shared-pool progress bars
+- [x] Keep manual refresh, cached display, inference-health isolation, and responsive layout
+- [x] Update operator documentation and run focused/full/reliability acceptance
+- **Status:** complete
+
 ## Decisions Made
 
 | Decision | Rationale |
@@ -391,3 +408,6 @@ Phase 46 complete; automatic first-start key provisioning accepted
 | New serve tests leaked `HAKIMI_CONFIG` into the full suite | 1 | Register the variable with pytest monkeypatch so teardown restores the environment before later app creation |
 | Phase 46 full suite loaded generated auth in a later diagnostic test | 1 | `delenv(..., raising=False)` did not register an absent key; seed it through `setenv` so pytest restores the original environment after each CLI test |
 | Final isolated package build could not reach PyPI in the sandbox | 1 | Re-run the unchanged `uv build` with dependency-download permission; v0.6.0 wheel and sdist built successfully |
+| Phase 47 cache invalidation landed in the AI Studio update route | 1 | Move the statement to the Antigravity OAuth-identity update branch and keep AI Studio behavior unchanged |
+| Combined Phase 47 code/test/error-log patch used the wrong file context | 1 | Split production/test repair from the planning-log append and apply each against its exact file |
+| Looked for a nonexistent `tests/test_usage.py` while adding public usage coverage | 1 | Locate the existing `/v1/usage` acceptance in `tests/test_routes.py` and extend that real boundary instead |

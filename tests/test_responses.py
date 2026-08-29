@@ -320,6 +320,33 @@ def test_chat_response_becomes_responses_response():
     }
 
 
+def test_chat_response_preserves_detailed_usage_for_responses_clients():
+    result = _chat_to_response(
+        {
+            "choices": [{
+                "message": {"role": "assistant", "content": "Hello"},
+                "finish_reason": "stop",
+            }],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 6,
+                "total_tokens": 16,
+                "prompt_tokens_details": {"cached_tokens": 4},
+                "completion_tokens_details": {"reasoning_tokens": 5},
+            },
+        },
+        "antigravity/gemini-3.7-flash-tiered",
+    )
+
+    assert result["usage"] == {
+        "input_tokens": 10,
+        "output_tokens": 6,
+        "total_tokens": 16,
+        "input_tokens_details": {"cached_tokens": 4},
+        "output_tokens_details": {"reasoning_tokens": 5},
+    }
+
+
 def test_chat_tool_response_becomes_responses_function_call():
     result = _chat_to_response(
         {

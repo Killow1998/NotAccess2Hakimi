@@ -1,5 +1,24 @@
 # Findings & Decisions
 
+## Phase 48 shared-window correction (2026-08-29)
+
+- The current per-model snapshot is technically parseable but semantically too
+  low-level. It can imply independent model budgets that the grouped upstream
+  contract does not promise.
+- `retrieveUserQuotaSummary` is the correct user-facing shape: quota groups
+  contain shared buckets, including Gemini session (5h) and weekly windows.
+  NA2H should preserve the raw identifiers while deriving only stable display
+  labels; reset times and fractions remain upstream-reported hints.
+- If grouped summary is unavailable, NA2H may retain model catalog data for
+  diagnostics but must label the UI as incomplete instead of drawing separate
+  quota bars for each model.
+- A grouped response that contains only the third-party Claude/GPT family is
+  insufficient for this Gemini gateway. The adapter must continue to the model
+  availability fallback instead of returning an unusable grouped snapshot.
+- The progress bar is the primary signal while the exact percentage and reset
+  timestamp remain supporting text. Threshold colors are good at 70%+, warning
+  at 30–69%, and critical below 30%; 0% renders an empty track.
+
 ## Requirements
 
 - Do not access or work around the suspended AGY service.
@@ -499,3 +518,48 @@
   Web mutations and OAuth refresh-token rotation resolve the persistence path
   dynamically. Tests therefore restore their surrounding environment rather
   than changing production lifetime semantics.
+
+## Phase 47 quota and metering diagnosis (2026-08-29)
+
+- The current Web UI reads only `/api/usage/summary`, which is local SQLite
+  metering. NA2H has no Antigravity remaining-quota fetch or display path.
+- Antigravity Manager's current primary implementation calls the internal
+  `fetchAvailableModels` endpoint and reads per-model
+  `quotaInfo.remainingFraction` plus `resetTime`; it treats grouped
+  `retrieveUserQuotaSummary` data as best-effort. This is external,
+  undocumented behavior and must remain a manual snapshot rather than a
+  background correctness signal.
+- A deterministic local repro proves
+  `antigravity/gemini-3.7-flash-tiered` has no pricing match and therefore
+  computes exactly `0.0`, while `antigravity/gemini-3.7-flash` computes a
+  nonzero value for the same tokens.
+- A second repro proves AGY `cachedContentTokenCount` and
+  `thoughtsTokenCount` are dropped by both response converters before
+  `UsageRecord.from_openai_usage`; the existing SQLite schema already has
+  cache-read and reasoning columns, so no database migration is required.
+- Billing identity must be separate from routing identity. Explicit known AGY
+  3.7 tier variants can map to the canonical priced `gemini-3.7-flash`
+  without changing which physical upstream model is called.
+- Cost is an API list-price equivalent, not an Antigravity subscription bill.
+  The UI must say so. Historical cache/reasoning details cannot be recovered;
+  new requests become complete after this phase.
+- The existing usage database already stores cache-read, cache-write, and
+  reasoning columns, but `/api/usage/summary` and the Web UI aggregate only
+  input/output/cost. The repair can remain schema-free and extend the existing
+  response shape additively.
+- Credential configuration reload rebuilds the pool but retains the adapter
+  instances. A bounded quota snapshot cache therefore belongs to the
+  Antigravity adapter (keyed by credential ID), while the credential-list route
+  may expose only that safe cached snapshot. Process restart intentionally
+  clears it; page refresh must not contact Google.
+- Quota refresh failures should reuse the shared safe upstream classifier for
+  HTTP/transport messages but must not automatically mutate inference health:
+  the undocumented information endpoint can fail while generation remains
+  healthy. The per-account lease still bounds concurrent upstream work.
+- Final implementation keeps upstream routing identity and billing identity
+  separate, so cost repair cannot silently select a different model. The quota
+  snapshot remains an explicit informational action and never participates in
+  scheduling or local readiness.
+- Responses usage details are additive: legacy responses without Chat detail
+  objects retain exactly `input_tokens`, `output_tokens`, and `total_tokens`,
+  while detailed AGY responses add the standard Responses detail objects.

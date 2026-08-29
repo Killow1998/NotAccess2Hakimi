@@ -78,6 +78,28 @@ a { color: var(--blue); }
 .credential-meta span + span::before { content: "·"; margin-right: 8px; color: var(--border); }
 .credential-runtime { margin-top: 9px; color: var(--muted); font-size: 11px; }
 .credential-runtime .runtime-error { color: #ffb4ae; }
+.quota-panel { position: relative; overflow: hidden; margin-top: 12px; padding: 15px; border: 1px solid rgba(88,166,255,.24); border-radius: 10px; background: linear-gradient(135deg, rgba(88,166,255,.09), rgba(46,160,67,.035)); }
+.quota-panel::after { content: ""; position: absolute; width: 150px; height: 150px; right: -70px; top: -95px; border-radius: 50%; background: rgba(88,166,255,.09); filter: blur(1px); pointer-events: none; }
+.quota-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; position: relative; z-index: 1; }
+.quota-kicker { color: var(--blue); font: 700 10px var(--mono); letter-spacing: .11em; text-transform: uppercase; }
+.quota-title { margin-top: 3px; font-size: 14px; font-weight: 700; }
+.quota-source { color: var(--muted); font: 10px var(--mono); white-space: nowrap; }
+.quota-windows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; margin-top: 14px; position: relative; z-index: 1; }
+.quota-window { padding: 12px; border: 1px solid rgba(139,148,158,.19); border-radius: 8px; background: rgba(13,17,23,.52); }
+.quota-window-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.quota-window-label { color: var(--text); font-size: 12px; font-weight: 650; }
+.quota-window-value { font: 750 18px var(--mono); }
+.quota-progress-track { height: 9px; margin-top: 9px; overflow: hidden; border-radius: 99px; background: rgba(139,148,158,.18); box-shadow: inset 0 1px 2px rgba(0,0,0,.35); }
+.quota-progress-fill { height: 100%; border-radius: inherit; transition: width .3s ease; }
+.quota-good .quota-window-value { color: #6ee787; }
+.quota-good .quota-progress-fill { background: linear-gradient(90deg, #238636, #56d364); }
+.quota-warn .quota-window-value { color: #e3b341; }
+.quota-warn .quota-progress-fill { background: linear-gradient(90deg, #9e6a03, #d29922); }
+.quota-critical .quota-window-value { color: #ff7b72; }
+.quota-critical .quota-progress-fill { background: linear-gradient(90deg, #b62324, #f85149); }
+.quota-reset { margin-top: 7px; color: var(--muted); font-size: 10px; }
+.quota-meta { margin-top: 10px; color: var(--muted); font-size: 10px; }
+.quota-fallback { margin-top: 11px; padding: 10px 11px; border-radius: 7px; color: #e3b341; background: rgba(210,153,34,.09); font-size: 11px; line-height: 1.5; }
 .credential-actions { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
 .credential-actions button { padding: 6px 10px; font-size: 12px; }
 .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 99px; font-size: 11px; font-weight: 650; }
@@ -123,6 +145,7 @@ tr:last-child td { border-bottom: 0; }
   .stats { grid-template-columns: 1fr 1fr; }
   .credential-actions { margin-top: 12px; justify-content: flex-start; flex-wrap: wrap; }
   .settings-grid, .modal .form-grid, .integration-grid { grid-template-columns: 1fr; }
+  .quota-windows { grid-template-columns: 1fr; }
   .form-group.full { grid-column: auto; }
   .panel { padding: 15px; }
   th, td { padding: 8px 6px; }
@@ -183,7 +206,7 @@ tr:last-child td { border-bottom: 0; }
   </section>
 
   <section class="panel" id="usage">
-    <div class="panel-header"><div><h2>用量</h2><p>按凭证和模型查看本地计量结果。</p></div><button class="btn-ghost" onclick="loadUsage()">刷新用量</button></div>
+    <div class="panel-header"><div><h2>用量</h2><p>本地 token 计量和 API 等价成本估算；不是 Antigravity 实际账单。</p></div><button class="btn-ghost" onclick="loadUsage()">刷新用量</button></div>
     <div id="usageStats" class="stats"></div>
     <div class="table-wrap" id="usageTable"></div>
   </section>
@@ -334,11 +357,14 @@ function renderHealth() {
   status.className = 'service online';
   status.innerHTML = `<span class="service-dot"></span><span>在线 · ${health.active_credentials || 0}/${health.total_credentials || 0} active · proxy ${esc(health.proxy_source || 'unknown')}</span>`;
   const usage = state.usage || {};
+  const totalTokens = (usage.total_input_tokens || 0) + (usage.total_cache_read_tokens || 0)
+    + (usage.total_cache_write_tokens || 0) + (usage.total_output_tokens || 0)
+    + (usage.total_reasoning_tokens || 0);
   document.getElementById('stats').innerHTML = [
     ['Active credentials', `${health.active_credentials || 0}/${health.total_credentials || 0}`, '当前可调度'],
     ['Requests', formatNum(usage.total_requests), '全部本地计量'],
-    ['Tokens', formatNum((usage.total_input_tokens || 0) + (usage.total_output_tokens || 0)), `${formatNum(usage.total_input_tokens)} in / ${formatNum(usage.total_output_tokens)} out`],
-    ['Estimated cost', '$' + Number(usage.total_cost_usd || 0).toFixed(4), 'USD'],
+    ['Tokens', formatNum(totalTokens), `${formatNum(usage.total_input_tokens)} input / ${formatNum(usage.total_cache_read_tokens)} cached / ${formatNum(usage.total_reasoning_tokens)} reasoning`],
+    ['API 等价成本', formatUsd(usage.total_cost_usd), '估算值 · 非 AGY 账单'],
   ].map(item => `<div class="stat"><div class="stat-label">${item[0]}</div><div class="stat-value">${item[1]}</div><div class="stat-sub">${item[2]}</div></div>`).join('');
 }
 
@@ -364,6 +390,7 @@ function renderCredentialList(kind, credentials) {
   }
   return credentials.map(credential => {
     const key = `${kind}:${credential.id}`;
+    const quotaKey = `quota:${credential.id}`;
     const result = state.tests[key];
     const tokenExpiry = kind === 'antigravity'
       ? (credential.access_token_expires_at ? `access token 至 ${new Date(credential.access_token_expires_at * 1000).toLocaleString()}` : 'access token 按需刷新')
@@ -382,20 +409,61 @@ function renderCredentialList(kind, credentials) {
     const lastError = credential.last_error_type
       ? `<div class="runtime-error">最近错误：${esc(credential.last_error_type)}${credential.last_error_message ? ` · ${esc(credential.last_error_message)}` : ''}</div>`
       : '';
+    const quota = kind === 'antigravity' ? renderQuotaSnapshot(credential.quota) : '';
     return `<article class="credential-card">
       <div class="credential-main">
         <div><div class="credential-name">${esc(credential.id)}</div><div class="credential-meta">${detail.filter(Boolean).map(esc).map(value => `<span>${value}</span>`).join('')}</div></div>
         <div class="credential-actions">
           ${stateBadge(credential.state)}
           <button class="btn-ghost" ${state.busy.has(key) ? 'disabled' : ''} onclick="testCredential('${kind}','${arg(credential.id)}')">${state.busy.has(key) ? '检查中…' : '检查'}</button>
+          ${kind === 'antigravity' ? `<button class="btn-ghost" ${state.busy.has(quotaKey) ? 'disabled' : ''} onclick="refreshAntigravityQuota('${arg(credential.id)}')">${state.busy.has(quotaKey) ? '刷新中…' : '刷新额度'}</button>` : ''}
           <button class="btn-ghost" onclick="openCredentialModal('${kind}','${arg(credential.id)}')">Edit</button>
           <button class="btn-danger" onclick="deleteCredential('${kind}','${arg(credential.id)}')">Delete</button>
         </div>
       </div>
       <div class="credential-runtime">${runtime}${lastError}</div>
+      ${quota}
       ${result ? `<div class="test-result ${result.ok ? 'ok' : 'error'}">${esc(result.message)}</div>` : ''}
     </article>`;
   }).join('');
+}
+function renderQuotaSnapshot(quota) {
+  if (!quota) return '<div class="quota-panel"><div class="quota-meta">尚未获取 AGY 额度；点击“刷新额度”主动查询。</div></div>';
+  const updated = quota.fetched_at ? relativeAge(quota.fetched_at) : '未知';
+  const source = esc(quota.source || 'unknown');
+  const group = (quota.groups || []).find(item => item.kind === 'gemini');
+  if (quota.mode !== 'grouped' || !group) {
+    const modelCount = (quota.models || []).length;
+    return `<div class="quota-panel"><div class="quota-panel-head"><div><div class="quota-kicker">Gemini shared pool</div><div class="quota-title">共享额度暂不可用</div></div><div class="quota-source">${source} · ${esc(updated)}</div></div><div class="quota-fallback">Google 未返回完整的 5h / 7d 共享额度。${modelCount ? `已检测到 ${modelCount} 个可用 Gemini 模型，但不会把逐模型数据伪装成独立额度池。` : '当前仅能确认账号连接状态。'}</div></div>`;
+  }
+  const buckets = [...(group.buckets || [])].sort((a, b) => quotaWindowRank(a) - quotaWindowRank(b));
+  const windows = buckets.map(bucket => {
+    const percent = Math.max(0, Math.min(100, Number(bucket.remaining_percent) || 0));
+    const label = quotaWindowLabel(bucket);
+    const tone = percent >= 70 ? 'quota-good' : percent >= 30 ? 'quota-warn' : 'quota-critical';
+    const reset = bucket.reset_time ? `重置于 ${formatTimestamp(bucket.reset_time)}` : '重置时间未知';
+    return `<div class="quota-window ${tone}"><div class="quota-window-head"><span class="quota-window-label">${esc(label)}</span><span class="quota-window-value">${percent}%</span></div><div class="quota-progress-track" role="progressbar" aria-label="${esc(label)} 剩余额度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><div class="quota-progress-fill" style="width:${percent}%"></div></div><div class="quota-reset">${esc(reset)}</div></div>`;
+  }).join('');
+  return `<div class="quota-panel"><div class="quota-panel-head"><div><div class="quota-kicker">Gemini shared pool</div><div class="quota-title">${esc(group.display_name || 'Gemini Models')}</div></div><div class="quota-source">${source} · ${esc(updated)}</div></div><div class="quota-windows">${windows || '<div class="quota-fallback">上游没有返回可展示的共享额度窗口。</div>'}</div><div class="quota-meta">Google 上游报告值 · 共享池余量，不代表单个模型拥有独立配额。</div></div>`;
+}
+function quotaWindowText(bucket) {
+  return `${bucket.bucket_id || ''} ${bucket.window || ''} ${bucket.display_name || ''}`.toLowerCase();
+}
+function quotaWindowRank(bucket) {
+  const text = quotaWindowText(bucket);
+  if (text.includes('5h') || text.includes('session')) return 0;
+  if (text.includes('weekly') || text.includes('week') || text.includes('7d')) return 1;
+  return 2;
+}
+function quotaWindowLabel(bucket) {
+  const text = quotaWindowText(bucket);
+  if (text.includes('5h') || text.includes('session')) return '5h';
+  if (text.includes('weekly') || text.includes('week') || text.includes('7d')) return '7d / Weekly';
+  return bucket.display_name || bucket.window || bucket.bucket_id || 'Quota';
+}
+function formatTimestamp(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
 }
 function healthLabel(name) {
   return { healthy: '正常', degraded: '降级', cooldown: '冷却', reauth_required: '需重新授权', disabled: '已禁用', unknown: '未知' }[name] || name || '未知';
@@ -637,6 +705,21 @@ async function testCredential(kind, encodedId) {
   finally { state.busy.delete(key); renderCredentials(); }
 }
 
+async function refreshAntigravityQuota(encodedId) {
+  const id = decodeURIComponent(encodedId); const key = `quota:${id}`;
+  state.busy.add(key); renderCredentials();
+  try {
+    const quota = await api('POST', `/api/credentials/antigravity/${encodeURIComponent(id)}/quota/refresh`);
+    const credential = (state.credentials.antigravity || []).find(item => item.id === id);
+    if (credential) credential.quota = quota;
+    toast('AGY 额度已刷新', 'success');
+  } catch (error) {
+    toast(`额度刷新失败：${error.message}`, 'error');
+  } finally {
+    state.busy.delete(key); renderCredentials();
+  }
+}
+
 async function loadUsage() {
   try { state.usage = await api('GET', '/api/usage/summary'); renderUsage(); renderHealth(); }
   catch (error) { toast(error.message, 'error'); }
@@ -645,11 +728,20 @@ function renderUsage() {
   const summary = state.usage || { by_credential: [], by_model: [] };
   document.getElementById('usageStats').innerHTML = [
     ['Requests', formatNum(summary.total_requests)], ['Input tokens', formatNum(summary.total_input_tokens)],
-    ['Output tokens', formatNum(summary.total_output_tokens)], ['Cost', '$' + Number(summary.total_cost_usd || 0).toFixed(4)],
+    ['Cached input', formatNum(summary.total_cache_read_tokens)], ['Cache write', formatNum(summary.total_cache_write_tokens)],
+    ['Output tokens', formatNum(summary.total_output_tokens)], ['Reasoning', formatNum(summary.total_reasoning_tokens)],
+    ['API 等价成本', formatUsd(summary.total_cost_usd)],
   ].map(item => `<div class="stat"><div class="stat-label">${item[0]}</div><div class="stat-value">${item[1]}</div></div>`).join('');
-  const credentialRows = (summary.by_credential || []).map(row => [esc(row.credential_id), row.requests, formatNum(row.input_tokens), formatNum(row.output_tokens), '$' + Number(row.cost_usd || 0).toFixed(4)]);
-  const modelRows = (summary.by_model || []).map(row => [esc(row.model), row.requests, formatNum(row.input_tokens), formatNum(row.output_tokens), '$' + Number(row.cost_usd || 0).toFixed(4)]);
-  document.getElementById('usageTable').innerHTML = `<h3 style="font-size:14px">按凭证</h3>${tableHtml(['Credential', 'Requests', 'Input', 'Output', 'Cost'], credentialRows)}<h3 style="margin:22px 0 8px;font-size:14px">按模型</h3>${tableHtml(['Model', 'Requests', 'Input', 'Output', 'Cost'], modelRows)}`;
+  const usageRow = (row, name) => [esc(name), row.requests, formatNum(row.input_tokens), formatNum(row.cache_read_tokens), formatNum(row.cache_write_tokens), formatNum(row.output_tokens), formatNum(row.reasoning_tokens), formatUsd(row.cost_usd)];
+  const credentialRows = (summary.by_credential || []).map(row => usageRow(row, row.credential_id));
+  const modelRows = (summary.by_model || []).map(row => usageRow(row, row.model));
+  const headers = ['Name', 'Requests', 'Input', 'Cached input', 'Cache write', 'Output', 'Reasoning', 'API 等价成本'];
+  document.getElementById('usageTable').innerHTML = `<h3 style="font-size:14px">按凭证</h3>${tableHtml(headers, credentialRows)}<h3 style="margin:22px 0 8px;font-size:14px">按模型</h3>${tableHtml(headers, modelRows)}`;
+}
+function formatUsd(value) {
+  const amount = Number(value || 0);
+  if (amount > 0 && amount < 0.000001) return '$&lt;0.000001';
+  return '$' + amount.toFixed(6);
 }
 function tableHtml(headers, rows) {
   if (!rows.length) return '<div class="empty">还没有用量数据</div>';

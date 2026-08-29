@@ -14,6 +14,7 @@ Request body is wrapped: {project, model, request: {geminiFormat}, userAgent, re
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 import json
 import logging
 import time
@@ -24,7 +25,7 @@ import httpx
 
 from hakimi_proxy.adapters.base import UpstreamAdapter
 from hakimi_proxy.config import AntigravityCredential
-from hakimi_proxy.errors import UpstreamError, UpstreamFailure, classify_response
+from hakimi_proxy.errors import UpstreamError, UpstreamFailure, classify_exception, classify_response
 from hakimi_proxy.model_catalog import ANTIGRAVITY_MODELS, resolve_antigravity_model
 from hakimi_proxy.pool import PooledCredential
 
@@ -33,6 +34,18 @@ logger = logging.getLogger(__name__)
 ENDPOINTS = [
     "https://daily-cloudcode-pa.googleapis.com",
     "https://cloudcode-pa.googleapis.com",
+]
+
+QUOTA_ENDPOINTS = [
+    ("sandbox", "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:fetchAvailableModels"),
+    ("daily", "https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels"),
+    ("prod", "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels"),
+]
+
+QUOTA_SUMMARY_ENDPOINTS = [
+    ("sandbox", "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary"),
+    ("daily", "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"),
+    ("prod", "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"),
 ]
 
 OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -68,6 +81,23 @@ def _json_object(value) -> dict:
         except json.JSONDecodeError:
             return {"result": value}
     return value if isinstance(value, dict) else {"result": value}
+
+
+def _openai_usage(usage_meta: dict) -> dict:
+    """Preserve Gemini's detailed token dimensions in OpenAI usage fields."""
+    prompt_tokens = int(usage_meta.get("promptTokenCount", 0) or 0)
+    completion_tokens = int(usage_meta.get("candidatesTokenCount", 0) or 0)
+    cached_tokens = int(usage_meta.get("cachedContentTokenCount", 0) or 0)
+    reasoning_tokens = int(usage_meta.get("thoughtsTokenCount", 0) or 0)
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": int(
+            usage_meta.get("totalTokenCount", prompt_tokens + completion_tokens) or 0
+        ),
+        "prompt_tokens_details": {"cached_tokens": cached_tokens},
+        "completion_tokens_details": {"reasoning_tokens": reasoning_tokens},
+    }
 
 
 def _content_parts(content) -> list[dict]:
@@ -275,10 +305,6 @@ def _gemini_to_openai(gemini_body: dict, model: str) -> dict:
         fr = first.get("finishReason", "STOP")
         finish_reason = _finish_reason(fr, bool(tool_calls))
 
-    usage_meta = inner.get("usageMetadata", {})
-    prompt_tokens = usage_meta.get("promptTokenCount", 0)
-    completion_tokens = usage_meta.get("candidatesTokenCount", 0)
-
     return {
         "id": f"chatcmpl-antigravity-{uuid.uuid4().hex[:8]}",
         "object": "chat.completion",
@@ -291,11 +317,7 @@ def _gemini_to_openai(gemini_body: dict, model: str) -> dict:
                 "finish_reason": finish_reason,
             }
         ],
-        "usage": {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": usage_meta.get("totalTokenCount", prompt_tokens + completion_tokens),
-        },
+        "usage": _openai_usage(inner.get("usageMetadata", {})),
     }
 
 
@@ -341,13 +363,7 @@ def _gemini_chunk_to_openai_chunk(gemini_data: dict, model: str, chunk_id: str) 
     usage_meta = inner.get("usageMetadata")
     usage: dict | None = None
     if usage_meta:
-        prompt_tokens = usage_meta.get("promptTokenCount", 0)
-        completion_tokens = usage_meta.get("candidatesTokenCount", 0)
-        usage = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": usage_meta.get("totalTokenCount", prompt_tokens + completion_tokens),
-        }
+        usage = _openai_usage(usage_meta)
 
     chunk = {
         "id": chunk_id,
@@ -403,6 +419,7 @@ class AntigravityAdapter(UpstreamAdapter):
         super().__init__(proxy=proxy)
         self.on_credential_update = on_credential_update
         self._refresh_locks: dict[str, asyncio.Lock] = {}
+        self._quota_cache: dict[str, dict] = {}
 
     @property
     def kind(self) -> str:
@@ -489,6 +506,217 @@ class AntigravityAdapter(UpstreamAdapter):
                 if self.on_credential_update:
                     self.on_credential_update()
         return response
+
+    def get_cached_quota(self, credential_id: str) -> dict | None:
+        """Return the last successful manual quota snapshot without upstream I/O."""
+        snapshot = self._quota_cache.get(credential_id)
+        return deepcopy(snapshot) if snapshot is not None else None
+
+    def clear_cached_quota(self, credential_id: str) -> None:
+        """Discard quota data when an account identity is rotated or removed."""
+        self._quota_cache.pop(credential_id, None)
+
+    async def _fetch_quota_json(
+        self,
+        endpoints: list[tuple[str, str]],
+        payload: dict,
+        ag: AntigravityCredential,
+        client: httpx.AsyncClient,
+        *,
+        best_effort: bool,
+    ) -> tuple[tuple[str, dict] | None, UpstreamFailure | None]:
+        """Fetch one internal quota payload with endpoint and project fallback."""
+        last_failure: UpstreamFailure | None = None
+        for source, endpoint in endpoints:
+            current_payload = dict(payload)
+            retried_without_project = False
+            while True:
+                try:
+                    response = await client.post(
+                        endpoint,
+                        json=current_payload,
+                        headers=self._headers(ag.access_token),
+                        timeout=30.0,
+                    )
+                except httpx.HTTPError as exc:
+                    last_failure = classify_exception(exc)
+                    break
+
+                if (
+                    response.status_code == 403
+                    and current_payload.get("project")
+                    and not retried_without_project
+                ):
+                    current_payload = {}
+                    retried_without_project = True
+                    await response.aclose()
+                    continue
+                if response.status_code != 200:
+                    last_failure = classify_response(response)
+                    should_fallback = response.status_code in {404, 429} or response.status_code >= 500
+                    await response.aclose()
+                    if should_fallback or best_effort:
+                        break
+                    raise UpstreamError(last_failure)
+
+                try:
+                    data = response.json()
+                except (ValueError, TypeError) as exc:
+                    last_failure = UpstreamFailure(
+                        "upstream_invalid_response",
+                        "Antigravity quota endpoint returned invalid JSON",
+                        response.status_code,
+                    )
+                    if not best_effort:
+                        raise UpstreamError(last_failure) from exc
+                    break
+                finally:
+                    await response.aclose()
+                if isinstance(data, dict):
+                    return (source, data), last_failure
+                last_failure = UpstreamFailure(
+                    "upstream_invalid_response",
+                    "Antigravity quota endpoint returned an invalid payload",
+                    response.status_code,
+                )
+                if not best_effort:
+                    raise UpstreamError(last_failure)
+                break
+        return None, last_failure
+
+    @staticmethod
+    def _parse_quota_groups(data: dict) -> list[dict]:
+        groups: list[dict] = []
+        raw_groups = data.get("groups", [])
+        if not isinstance(raw_groups, list):
+            return groups
+        for raw_group in raw_groups:
+            if not isinstance(raw_group, dict):
+                continue
+            buckets: list[dict] = []
+            raw_buckets = raw_group.get("buckets", [])
+            if not isinstance(raw_buckets, list):
+                continue
+            for raw_bucket in raw_buckets:
+                if not isinstance(raw_bucket, dict) or raw_bucket.get("remainingFraction") is None:
+                    continue
+                try:
+                    remaining = float(raw_bucket["remainingFraction"])
+                except (TypeError, ValueError):
+                    continue
+                if not 0.0 <= remaining <= 1.0:
+                    continue
+                buckets.append({
+                    "bucket_id": str(raw_bucket.get("bucketId") or ""),
+                    "window": str(raw_bucket.get("window") or ""),
+                    "display_name": str(raw_bucket.get("displayName") or ""),
+                    "description": str(raw_bucket.get("description") or ""),
+                    "remaining_fraction": remaining,
+                    "remaining_percent": round(remaining * 100),
+                    "reset_time": str(raw_bucket.get("resetTime") or ""),
+                })
+            if not buckets:
+                continue
+            display_name = str(raw_group.get("displayName") or "")
+            identity = " ".join(
+                [display_name, *(bucket["bucket_id"] for bucket in buckets)]
+            ).lower()
+            groups.append({
+                "kind": "gemini" if "gemini" in identity else "other",
+                "display_name": display_name,
+                "description": str(raw_group.get("description") or ""),
+                "buckets": buckets,
+            })
+        return groups
+
+    @staticmethod
+    def _parse_model_quota(data: dict) -> list[dict]:
+        models: list[dict] = []
+        raw_models = data.get("models", {})
+        if not isinstance(raw_models, dict):
+            return models
+        for model, raw_info in raw_models.items():
+            if not isinstance(model, str) or not model.startswith("gemini"):
+                continue
+            info = raw_info if isinstance(raw_info, dict) else {}
+            quota = info.get("quotaInfo")
+            if not isinstance(quota, dict) or quota.get("remainingFraction") is None:
+                continue
+            try:
+                remaining = float(quota["remainingFraction"])
+            except (TypeError, ValueError):
+                continue
+            if not 0.0 <= remaining <= 1.0:
+                continue
+            display_name = info.get("displayName")
+            reset_time = quota.get("resetTime")
+            models.append({
+                "model": model,
+                "display_name": display_name if isinstance(display_name, str) else "",
+                "remaining_fraction": remaining,
+                "remaining_percent": round(remaining * 100),
+                "reset_time": reset_time if isinstance(reset_time, str) else "",
+            })
+        return sorted(models, key=lambda item: item["model"])
+
+    async def fetch_quota(
+        self,
+        cred: PooledCredential,
+        client: httpx.AsyncClient,
+    ) -> dict:
+        """Fetch and cache shared quota windows, with model data as fallback."""
+        await self.refresh_credential(cred)
+        ag: AntigravityCredential = cred.credential  # type: ignore[attr-defined]
+        base_payload = {"project": ag.project} if ag.project else {}
+        summary_result, summary_failure = await self._fetch_quota_json(
+            QUOTA_SUMMARY_ENDPOINTS,
+            base_payload,
+            ag,
+            client,
+            best_effort=True,
+        )
+        if summary_result is not None:
+            source, data = summary_result
+            groups = [
+                group for group in self._parse_quota_groups(data)
+                if group["kind"] == "gemini"
+            ]
+            if groups:
+                snapshot = {
+                    "credential_id": cred.id,
+                    "source": source,
+                    "fetched_at": time.time(),
+                    "mode": "grouped",
+                    "groups": groups,
+                    "models": [],
+                }
+                self._quota_cache[cred.id] = snapshot
+                return deepcopy(snapshot)
+
+        model_result, model_failure = await self._fetch_quota_json(
+            QUOTA_ENDPOINTS,
+            base_payload,
+            ag,
+            client,
+            best_effort=False,
+        )
+        if model_result is not None:
+            source, data = model_result
+            snapshot = {
+                "credential_id": cred.id,
+                "source": source,
+                "fetched_at": time.time(),
+                "mode": "model_fallback",
+                "groups": [],
+                "models": self._parse_model_quota(data),
+            }
+            self._quota_cache[cred.id] = snapshot
+            return deepcopy(snapshot)
+
+        raise UpstreamError(model_failure or summary_failure or UpstreamFailure(
+            "upstream_error",
+            "Antigravity quota endpoints are unavailable",
+        ))
 
     async def _ensure_project(
         self, ag: AntigravityCredential, client: httpx.AsyncClient
@@ -598,14 +826,7 @@ class AntigravityAdapter(UpstreamAdapter):
     def extract_usage(self, response_body: dict) -> dict:
         """Extract usage from a non-streaming Cloud Code response."""
         inner = response_body.get("response", response_body)
-        usage_meta = inner.get("usageMetadata", {})
-        prompt_tokens = usage_meta.get("promptTokenCount", 0)
-        completion_tokens = usage_meta.get("candidatesTokenCount", 0)
-        return {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": usage_meta.get("totalTokenCount", prompt_tokens + completion_tokens),
-        }
+        return _openai_usage(inner.get("usageMetadata", {}))
 
     def transform_stream_line(self, raw_line: str) -> tuple[str | None, dict | None]:
         """Transform a Cloud Code SSE line to OpenAI SSE format."""

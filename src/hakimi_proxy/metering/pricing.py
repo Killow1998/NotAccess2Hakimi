@@ -32,6 +32,7 @@ BUILTIN_PRICING: dict[str, ModelPricing] = {
     "gemini-3.7-flash": ModelPricing(
         input_cost_per_token=0.75 / _PER_M,
         output_cost_per_token=3.75 / _PER_M,
+        cache_read_input_token_cost=0.075 / _PER_M,
     ),
     "gemini-3.5-flash": ModelPricing(
         input_cost_per_token=0.30 / _PER_M,
@@ -81,6 +82,19 @@ BUILTIN_PRICING: dict[str, ModelPricing] = {
 
 _pricing_table: dict[str, ModelPricing] = dict(BUILTIN_PRICING)
 
+# Routing IDs describe upstream behavior; billing IDs describe the equivalent
+# public API price. Keep the two identities explicit instead of weakening model
+# routing with pricing-only aliases.
+BILLING_MODEL_ALIASES: dict[str, str] = {
+    "gemini-3.7-flash-tiered": "gemini-3.7-flash",
+    "gemini-3.6-flash-high": "gemini-3.6-flash",
+    "gemini-3.6-flash-medium": "gemini-3.6-flash",
+    "gemini-3.6-flash-low": "gemini-3.6-flash",
+    "gemini-3.6-flash-tiered": "gemini-3.6-flash",
+    "gemini-3.5-flash-extra-low": "gemini-3.5-flash",
+    "gemini-3.5-flash-low": "gemini-3.5-flash",
+}
+
 
 def load_custom_pricing(path: str | Path) -> None:
     """Load custom pricing overrides from a YAML file."""
@@ -104,8 +118,9 @@ def get_pricing(model: str) -> ModelPricing | None:
     if model in _pricing_table:
         return _pricing_table[model]
     stripped = model.split("/")[-1]
-    if stripped in _pricing_table:
-        return _pricing_table[stripped]
+    billing_model = BILLING_MODEL_ALIASES.get(stripped, stripped)
+    if billing_model in _pricing_table:
+        return _pricing_table[billing_model]
     return None
 
 

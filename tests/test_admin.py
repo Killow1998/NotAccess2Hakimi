@@ -10,7 +10,9 @@ from httpx2 import ASGITransport, AsyncClient
 
 from hakimi_proxy.auth import BearerAuthMiddleware
 from hakimi_proxy.config import AIStudioCredential, AntigravityCredential, ProxyConfig
+from hakimi_proxy.errors import UpstreamError, UpstreamFailure
 from hakimi_proxy.main import create_app
+from hakimi_proxy.metering.models import TokenBreakdown, UsageRecord
 from hakimi_proxy.metering.store import UsageStore
 from hakimi_proxy.pool import CredentialPool
 from hakimi_proxy.adapters.aistudio import AIStudioAdapter
@@ -480,6 +482,7 @@ async def test_update_antigravity_preserves_omitted_oauth():
     stored = app.state.config.antigravity_credentials[0]
     stored.access_token = "cached-access-token"
     stored.expires_at = 123.0
+    app.state.antigravity._quota_cache["ag-update"] = {"credential_id": "ag-update"}
 
     resp = await _request(app, "PUT", "/api/credentials/antigravity/ag-update", json={
         "project": "new-project",
@@ -495,6 +498,7 @@ async def test_update_antigravity_preserves_omitted_oauth():
     assert stored.expires_at == 123.0
     assert stored.project == "new-project"
     assert stored.auto_onboard is True
+    assert app.state.antigravity.get_cached_quota("ag-update") is None
 
 
 async def test_update_antigravity_identity_change_clears_cached_state():
@@ -509,6 +513,7 @@ async def test_update_antigravity_identity_change_clears_cached_state():
     stored = app.state.config.antigravity_credentials[0]
     stored.access_token = "cached-access-token"
     stored.expires_at = 123.0
+    app.state.antigravity._quota_cache["ag-rotate"] = {"credential_id": "ag-rotate"}
 
     resp = await _request(app, "PUT", "/api/credentials/antigravity/ag-rotate", json={
         "refresh_token": "new-refresh-token",
@@ -520,6 +525,7 @@ async def test_update_antigravity_identity_change_clears_cached_state():
     assert stored.access_token == ""
     assert stored.expires_at == 0.0
     assert stored.project == ""
+    assert app.state.antigravity.get_cached_quota("ag-rotate") is None
 
 
 async def test_list_credentials():
@@ -680,6 +686,108 @@ async def test_usage_summary():
     assert isinstance(data["by_model"], list)
 
 
+async def test_usage_summary_includes_cache_reasoning_and_equivalent_cost(tmp_path):
+    app = _make_admin_app()
+    app.state.store = UsageStore(tmp_path / "usage.db")
+    app.state.store.record(UsageRecord(
+        credential_id="ag-test",
+        model="antigravity/gemini-3.7-flash-tiered",
+        upstream="antigravity",
+        tokens=TokenBreakdown(input=600, cache_read=400, output=100, reasoning=500),
+        cost_usd=0.00273,
+    ))
+
+    response = await _request(app, "GET", "/api/usage/summary")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_input_tokens"] == 600
+    assert data["total_cache_read_tokens"] == 400
+    assert data["total_reasoning_tokens"] == 500
+    assert data["total_output_tokens"] == 100
+    assert data["total_cost_usd"] == 0.00273
+    assert data["by_credential"][0]["cache_read_tokens"] == 400
+    assert data["by_model"][0]["reasoning_tokens"] == 500
+
+
+async def test_manual_antigravity_quota_refresh_is_cached_on_credential_card():
+    app = _make_admin_app()
+    await _request(app, "POST", "/api/credentials/antigravity", json={
+        "id": "ag-quota", "client_id": "cid", "client_secret": "cs", "refresh_token": "rt",
+    })
+    snapshot = {
+        "credential_id": "ag-quota",
+        "source": "daily",
+        "fetched_at": 123.0,
+        "mode": "grouped",
+        "models": [],
+        "groups": [{
+            "kind": "gemini",
+            "display_name": "Gemini Models",
+            "buckets": [{
+                "bucket_id": "gemini-5h",
+                "window": "5h",
+                "remaining_percent": 80,
+                "reset_time": "2026-08-30T01:02:03Z",
+            }],
+        }],
+    }
+
+    async def fetch_quota(credential, client):
+        app.state.antigravity._quota_cache[credential.id] = snapshot
+        return snapshot
+
+    app.state.antigravity.fetch_quota = fetch_quota
+    response = await _request(
+        app,
+        "POST",
+        "/api/credentials/antigravity/ag-quota/quota/refresh",
+    )
+
+    assert response.status_code == 200
+    assert response.json() == snapshot
+    listed = (await _request(app, "GET", "/api/credentials")).json()["antigravity"][0]
+    assert listed["quota"]["groups"][0]["buckets"][0]["remaining_percent"] == 80
+
+
+async def test_failed_quota_refresh_preserves_cached_snapshot_and_inference_health():
+    app = _make_admin_app()
+    await _request(app, "POST", "/api/credentials/antigravity", json={
+        "id": "ag-quota", "client_id": "cid", "client_secret": "cs", "refresh_token": "rt",
+    })
+    snapshot = {
+        "credential_id": "ag-quota",
+        "source": "daily",
+        "fetched_at": 123.0,
+        "models": [{"model": "gemini-3.7-flash-tiered", "remaining_percent": 80}],
+    }
+    app.state.antigravity._quota_cache["ag-quota"] = snapshot
+
+    async def fail_quota(credential, client):
+        raise UpstreamError(UpstreamFailure(
+            "upstream_auth_error",
+            "Upstream authorization failed",
+            upstream_status=403,
+            credential_action="disable",
+        ))
+
+    app.state.antigravity.fetch_quota = fail_quota
+    response = await _request(
+        app,
+        "POST",
+        "/api/credentials/antigravity/ag-quota/quota/refresh",
+    )
+
+    assert response.status_code == 502
+    assert response.json()["error"]["type"] == "upstream_auth_error"
+    listed = (await _request(app, "GET", "/api/credentials")).json()["antigravity"][0]
+    assert listed["state"] == "active"
+    assert listed["health"] == "unknown"
+    assert listed["failure_count"] == 0
+    assert listed["in_flight"] == 0
+    assert listed["quota"] == snapshot
+
+
 async def test_web_ui_served():
     app = _make_admin_app()
     resp = await _request(app, "GET", "/")
@@ -688,5 +796,13 @@ async def test_web_ui_served():
     assert "testCredential" in resp.text
     assert "留空保持当前值" in resp.text
     assert "sidebar" not in resp.text.lower()
+    assert "刷新额度" in resp.text
+    assert "quota-progress-track" in resp.text
+    assert 'role="progressbar"' in resp.text
+    assert "7d / Weekly" in resp.text
+    assert "quota-row" not in resp.text
+    assert "API 等价成本" in resp.text
+    assert "Cached input" in resp.text
+    assert "Reasoning" in resp.text
     resp2 = await _request(app, "GET", "/ui")
     assert resp2.status_code == 200

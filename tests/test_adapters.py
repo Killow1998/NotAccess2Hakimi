@@ -269,6 +269,22 @@ def test_gemini_to_openai_basic():
     assert result["model"] == "gemini-3.7-flash"
 
 
+def test_gemini_to_openai_preserves_detailed_usage():
+    result = _gemini_to_openai({
+        "candidates": [{"content": {"parts": [{"text": "ok"}]}, "finishReason": "STOP"}],
+        "usageMetadata": {
+            "promptTokenCount": 1000,
+            "candidatesTokenCount": 100,
+            "totalTokenCount": 1600,
+            "cachedContentTokenCount": 400,
+            "thoughtsTokenCount": 500,
+        },
+    }, "gemini-3.7-flash-tiered")
+
+    assert result["usage"]["prompt_tokens_details"] == {"cached_tokens": 400}
+    assert result["usage"]["completion_tokens_details"] == {"reasoning_tokens": 500}
+
+
 def test_gemini_to_openai_max_tokens():
     """finishReason MAX_TOKENS maps to 'length'."""
     gemini_body = {
@@ -347,6 +363,25 @@ def test_antigravity_transform_stream_line():
     assert usage["prompt_tokens"] == 10
 
 
+def test_antigravity_stream_preserves_detailed_usage():
+    adapter = AntigravityAdapter()
+    line = "data: " + json.dumps({"response": {
+        "candidates": [],
+        "usageMetadata": {
+            "promptTokenCount": 1000,
+            "candidatesTokenCount": 100,
+            "totalTokenCount": 1600,
+            "cachedContentTokenCount": 400,
+            "thoughtsTokenCount": 500,
+        },
+    }})
+
+    _, usage = adapter.transform_stream_line(line)
+
+    assert usage["prompt_tokens_details"] == {"cached_tokens": 400}
+    assert usage["completion_tokens_details"] == {"reasoning_tokens": 500}
+
+
 def test_antigravity_transform_stream_tool_call():
     adapter = AntigravityAdapter()
     line = "data: " + json.dumps({"response": {"candidates": [{
@@ -373,14 +408,207 @@ def test_antigravity_extract_usage():
             "usageMetadata": {
                 "promptTokenCount": 100,
                 "candidatesTokenCount": 50,
-                "totalTokenCount": 150,
+                "totalTokenCount": 180,
+                "cachedContentTokenCount": 20,
+                "thoughtsTokenCount": 30,
             }
         }
     }
     usage = adapter.extract_usage(body)
     assert usage["prompt_tokens"] == 100
     assert usage["completion_tokens"] == 50
-    assert usage["total_tokens"] == 150
+    assert usage["total_tokens"] == 180
+    assert usage["prompt_tokens_details"] == {"cached_tokens": 20}
+    assert usage["completion_tokens_details"] == {"reasoning_tokens": 30}
+
+
+@pytest.mark.asyncio
+async def test_antigravity_fetch_quota_prefers_grouped_windows(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        antigravity_module,
+        "QUOTA_SUMMARY_ENDPOINTS",
+        [("daily", "https://quota.test/v1internal:retrieveUserQuotaSummary")],
+    )
+    monkeypatch.setattr(antigravity_module, "QUOTA_ENDPOINTS", [])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        assert request.headers["authorization"] == "Bearer token"
+        assert json.loads(request.content) == {"project": "project-1"}
+        return httpx.Response(200, request=request, json={"groups": [{
+            "displayName": "Gemini Models",
+            "description": "Shared Gemini quota",
+            "buckets": [
+                {
+                    "bucketId": "gemini-5h",
+                    "window": "5h",
+                    "remainingFraction": 0.8,
+                    "resetTime": "2026-08-30T01:02:03Z",
+                    "displayName": "Session",
+                },
+                {
+                    "bucketId": "gemini-weekly",
+                    "window": "weekly",
+                    "remainingFraction": 0.35,
+                    "resetTime": "2026-09-05T01:02:03Z",
+                    "displayName": "Weekly",
+                },
+            ],
+        }]})
+
+    cred = _make_ag_cred()
+    cred.credential.access_token = "token"
+    cred.credential.expires_at = time.time() + 3600
+    cred.credential.project = "project-1"
+    adapter = AntigravityAdapter()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        snapshot = await adapter.fetch_quota(cred, client)
+
+    assert len(calls) == 1
+    assert snapshot["source"] == "daily"
+    assert snapshot["mode"] == "grouped"
+    assert snapshot["models"] == []
+    assert snapshot["groups"] == [{
+        "kind": "gemini",
+        "display_name": "Gemini Models",
+        "description": "Shared Gemini quota",
+        "buckets": [
+            {
+                "bucket_id": "gemini-5h",
+                "window": "5h",
+                "display_name": "Session",
+                "description": "",
+                "remaining_fraction": 0.8,
+                "remaining_percent": 80,
+                "reset_time": "2026-08-30T01:02:03Z",
+            },
+            {
+                "bucket_id": "gemini-weekly",
+                "window": "weekly",
+                "display_name": "Weekly",
+                "description": "",
+                "remaining_fraction": 0.35,
+                "remaining_percent": 35,
+                "reset_time": "2026-09-05T01:02:03Z",
+            },
+        ],
+    }]
+    assert snapshot["fetched_at"] > 0
+    assert adapter.get_cached_quota("test") == snapshot
+
+
+@pytest.mark.asyncio
+async def test_antigravity_fetch_quota_falls_back_after_404(monkeypatch):
+    monkeypatch.setattr(
+        antigravity_module,
+        "QUOTA_SUMMARY_ENDPOINTS",
+        [("summary", "https://summary.test/v1internal:retrieveUserQuotaSummary")],
+    )
+    monkeypatch.setattr(
+        antigravity_module,
+        "QUOTA_ENDPOINTS",
+        [
+            ("sandbox", "https://sandbox.test/v1internal:fetchAvailableModels"),
+            ("daily", "https://daily.test/v1internal:fetchAvailableModels"),
+        ],
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host in {"summary.test", "sandbox.test"}:
+            return httpx.Response(404, request=request)
+        return httpx.Response(200, request=request, json={"models": {
+            "gemini-3.7-flash-tiered": {
+                "quotaInfo": {"remainingFraction": 0.25, "resetTime": "reset"},
+            },
+        }})
+
+    cred = _make_ag_cred()
+    cred.credential.access_token = "token"
+    cred.credential.expires_at = time.time() + 3600
+    adapter = AntigravityAdapter()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        snapshot = await adapter.fetch_quota(cred, client)
+
+    assert snapshot["source"] == "daily"
+    assert snapshot["mode"] == "model_fallback"
+    assert snapshot["groups"] == []
+    assert snapshot["models"][0]["remaining_percent"] == 25
+
+
+@pytest.mark.asyncio
+async def test_grouped_quota_retries_without_project_after_403(monkeypatch):
+    payloads = []
+    monkeypatch.setattr(
+        antigravity_module,
+        "QUOTA_SUMMARY_ENDPOINTS",
+        [("daily", "https://quota.test/v1internal:retrieveUserQuotaSummary")],
+    )
+    monkeypatch.setattr(antigravity_module, "QUOTA_ENDPOINTS", [])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payloads.append(json.loads(request.content))
+        if len(payloads) == 1:
+            return httpx.Response(403, request=request)
+        return httpx.Response(200, request=request, json={"groups": [{
+            "displayName": "Gemini Models",
+            "buckets": [{
+                "bucketId": "gemini-5h",
+                "window": "5h",
+                "remainingFraction": 0.5,
+                "resetTime": "reset",
+            }],
+        }]})
+
+    cred = _make_ag_cred()
+    cred.credential.access_token = "token"
+    cred.credential.expires_at = time.time() + 3600
+    cred.credential.project = "project-1"
+    adapter = AntigravityAdapter()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        snapshot = await adapter.fetch_quota(cred, client)
+
+    assert payloads == [{"project": "project-1"}, {}]
+    assert snapshot["groups"][0]["buckets"][0]["remaining_percent"] == 50
+
+
+@pytest.mark.asyncio
+async def test_non_gemini_group_does_not_replace_gemini_fallback(monkeypatch):
+    monkeypatch.setattr(
+        antigravity_module,
+        "QUOTA_SUMMARY_ENDPOINTS",
+        [("daily", "https://quota.test/v1internal:retrieveUserQuotaSummary")],
+    )
+    monkeypatch.setattr(
+        antigravity_module,
+        "QUOTA_ENDPOINTS",
+        [("daily", "https://quota.test/v1internal:fetchAvailableModels")],
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith(":retrieveUserQuotaSummary"):
+            return httpx.Response(200, request=request, json={"groups": [{
+                "displayName": "Claude and GPT models",
+                "buckets": [{
+                    "bucketId": "3p-5h",
+                    "remainingFraction": 0.9,
+                }],
+            }]})
+        return httpx.Response(200, request=request, json={"models": {
+            "gemini-3.7-flash-tiered": {
+                "quotaInfo": {"remainingFraction": 0.25},
+            },
+        }})
+
+    cred = _make_ag_cred()
+    cred.credential.access_token = "token"
+    cred.credential.expires_at = time.time() + 3600
+    adapter = AntigravityAdapter()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        snapshot = await adapter.fetch_quota(cred, client)
+
+    assert snapshot["mode"] == "model_fallback"
+    assert snapshot["models"][0]["remaining_percent"] == 25
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,83 @@
 # Progress Log
 
+## Phase 48 start (2026-08-29)
+
+- User corrected the product model: Gemini quota is principally one shared
+  family pool with 5-hour and weekly windows, so per-model percentages are a
+  misleading primary UI even when `fetchAvailableModels` returns them.
+- Verified the current Antigravity Manager protocol structures directly:
+  `retrieveUserQuotaSummary` returns `groups[].buckets[]` with `bucketId`,
+  `window`, `remainingFraction`, and `resetTime`; endpoints use the same
+  Sandbox → Daily → Prod fallback order. `fetchAvailableModels` remains useful
+  only as a degraded capability/legacy signal.
+- Locked the revised acceptance surface to a single Gemini shared-pool card
+  with 5h and Weekly/7d progress bars, reset times, freshness/source metadata,
+  and no per-model percentage rows in the normal UI.
+- Phase 48 RED produced four expected failures: the adapter had no grouped
+  endpoint contract and the Web UI had no progress-bar surface. Implemented the
+  grouped path, project/endpoint fallback, explicitly degraded model-catalog
+  mode, and responsive good/warn/critical progress bars; all six focused quota
+  and Web acceptance tests now pass.
+- Added a second RED boundary proving a Claude/GPT-only grouped response cannot
+  suppress Gemini fallback. The public snapshot now contains only the Gemini
+  shared group when available.
+- Inspected real rendered output with fake data at 1440px desktop and 390px
+  mobile widths. The two windows render side by side on desktop and stack on
+  mobile; buttons, reset metadata, colors, and bars remain contained.
+- Final Phase 48 acceptance passed with 175 tests, compileall, uv lock and Web
+  JavaScript validation, clean diff whitespace, and the 500/500 fake-upstream
+  Agent reliability gate with one maximum active upstream and zero leaked
+  leases. The temporary preview server, fake database, screenshots, and Chrome
+  profiles were removed after inspection; no Google request was made.
+
+## Phase 47 start (2026-08-29)
+
+- Reproduced the reported zero-cost behavior with the routed model ID:
+  `antigravity/gemini-3.7-flash-tiered` misses the pricing table and returns
+  zero for a nonzero token breakdown.
+- Reproduced loss of `cachedContentTokenCount` and `thoughtsTokenCount` at the
+  AGY-to-OpenAI usage conversion boundary. SQLite already supports both token
+  dimensions, while the dashboard summary currently omits them.
+- Confirmed the Web UI has only local usage metering and no AGY upstream quota
+  snapshot. Locked the implementation to explicit per-account refresh plus
+  cached display; no scheduled polling, quota prediction, or routing changes.
+- Restored the complete maintained plan/findings/progress history and confirmed
+  the checkout began clean on `main` aligned with `origin/main`. Existing
+  manual-only Google traffic, single-worker scheduling, Responses compatibility,
+  and secret-redaction contracts remain in force for this phase.
+- Inspected the existing seams: adapter conversion owns raw `usageMetadata`,
+  `UsageRecord`/SQLite already own detailed token dimensions, admin summary
+  owns dashboard aggregation, and credential cards already own manual account
+  actions. No new page, database table, or background task is needed.
+- Selected regression seams before implementation: adapter unit fixtures for
+  detailed usage and quota fallback/cache parsing, pricing unit tests for the
+  routed tiered ID, admin ASGI tests for safe manual refresh and summary totals,
+  and the existing static Web UI acceptance for labels/actions. Production
+  changes remain blocked until these tests fail for the reported behavior.
+- Phase 47 RED is confirmed: the focused suite produced nine expected failures
+  covering missing detailed usage fields, missing quota adapter/API/cache,
+  missing tiered billing identity, omitted dashboard dimensions, and absent UI
+  controls/labels. The remaining 63 focused tests stayed green, so the feedback
+  loop isolates the requested behavior rather than a baseline regression.
+- The first GREEN pass now covers 72 focused adapter, pricing, and admin tests.
+  Final review found one remaining additive compatibility gap: Responses API
+  usage currently discards Chat usage detail fields after metering has already
+  consumed them. The next regression preserves those fields for downstream
+  Responses clients without changing the legacy three-field response when no
+  details exist.
+- Completed the public contract: detailed token dimensions survive AGY
+  non-streaming, streaming, direct extraction, local SQLite aggregation, Chat,
+  and Responses conversion. Routed tier model IDs resolve only for billing and
+  do not alter upstream model selection.
+- Completed the manual quota slice with bounded endpoint/project fallback,
+  last-success caching, refresh controls, reset-time display, and identity-change
+  invalidation. Failed informational lookups preserve both the cached snapshot
+  and the inference credential's health/cooldown state.
+- Final acceptance passed with 173 tests, compileall, uv lock validation, inline
+  Web JavaScript parsing, and clean diff whitespace. The fake-upstream 500-request
+  reliability gate passed 500/500, one maximum active upstream, signed Agent
+  tool-result replay, and zero leaked leases. No live Google request was made.
+
 ## Session: 2026-08-19
 
 ### Phase 1: Baseline and credential boundary

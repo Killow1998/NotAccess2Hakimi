@@ -176,7 +176,10 @@ The built-in single-page console at `/` provides:
 - one state-driven next action for login, credential repair, or client handoff
 - service health, active credential counts, total requests/tokens/cost
 - AI Studio and Antigravity add/edit/delete cards with live state badges
-- per-credential and per-model usage breakdown
+- manual Antigravity Gemini shared-pool snapshots with 5h and Weekly/7d
+  progress bars and upstream reset times
+- per-credential and per-model input, cached-input, cache-write, output, and
+  reasoning-token breakdown
 - a collapsed settings section for host, port, auth token, retry count, cooldown,
   database path, upstream proxy, and diagnostic journal status
 
@@ -193,6 +196,22 @@ returns `*_set` metadata instead of secret fragments. `可调度`/`active` means
 credential is locally eligible for selection, not that a remote connection test
 has succeeded; use the row-level **检查** action for an OAuth → control-plane →
 inference check. It runs only when clicked and does not poll Google in the background.
+
+The Antigravity **刷新额度** action queries Google's grouped quota summary for
+that account and caches the last successful Gemini shared-pool snapshot in
+memory. The normal UI shows the 5h and Weekly/7d remaining windows rather than
+pretending each model has an independent budget. If grouped data is unavailable,
+the model catalog is used only as a clearly labelled availability fallback.
+Page reloads do not contact Google, a failed refresh does not cool down an
+otherwise healthy inference credential, and the snapshot is cleared on process
+restart or account rotation. It is an upstream-reported hint, not local
+accounting or a promise that the next request will be accepted.
+
+The usage dashboard is local SQLite metering. **API 等价成本** estimates the
+corresponding public API list-price value; it is not an Antigravity charge or
+subscription balance. New Antigravity requests preserve cached-input and
+reasoning-token details when Google reports them. Older rows cannot be
+retroactively split and therefore remain in their previously recorded form.
 
 The **凭证迁移** action exports a sensitive, versioned JSON backup and previews
 new/conflicting IDs before restore. It includes long-lived API keys and refresh
@@ -236,13 +255,14 @@ inside the existing bounded queue.
 | `/api/credentials/aistudio/{id}` | PUT/DELETE | Partially update/delete; omitted secrets are preserved |
 | `/api/credentials/antigravity` | POST | Add Antigravity account |
 | `/api/credentials/antigravity/{id}` | PUT/DELETE | Partially update/delete; omitted OAuth fields are preserved |
+| `/api/credentials/antigravity/{id}/quota/refresh` | POST | Manually refresh and cache one account's shared-window quota snapshot |
 | `/api/credentials/antigravity/oauth/start` | POST | Start local/remote browser OAuth |
 | `/api/credentials/antigravity/oauth/status/{state}` | GET | Poll the OAuth login |
 | `/api/credentials/antigravity/oauth/complete` | POST | Submit a copied callback URL or one-time OAuth code |
 | `/api/credentials/export` | GET | Download a credentials-only backup (HTTPS/loopback only) |
 | `/api/credentials/import` | POST | Preview/apply a credential restore (HTTPS/loopback only) |
 | `/api/credentials/{kind}/{id}/test` | POST | Check one credential and return stage/latency/error type |
-| `/api/usage/summary` | GET | Aggregated usage stats |
+| `/api/usage/summary` | GET | Aggregated detailed token stats and API-equivalent cost |
 
 ## Configuration
 
