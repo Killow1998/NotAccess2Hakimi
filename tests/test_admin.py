@@ -788,11 +788,65 @@ async def test_failed_quota_refresh_preserves_cached_snapshot_and_inference_heal
     assert listed["quota"] == snapshot
 
 
+async def test_antigravity_full_verification_returns_redacted_report(monkeypatch):
+    app = _make_admin_app()
+    await _request(app, "POST", "/api/credentials/antigravity", json={
+        "id": "private-account@example.com",
+        "client_id": "client-private",
+        "client_secret": "secret-private",
+        "refresh_token": "refresh-private",
+    })
+    expected = {
+        "schema_version": 1,
+        "fingerprint_version": 1,
+        "status": "passed",
+        "provider": "antigravity",
+        "model": "antigravity/gemini-3.7-flash-tiered",
+        "credential_ref": "sha256:0123456789abcdef",
+        "generated_at": "2026-08-29T00:00:00+00:00",
+        "stages": [],
+        "summary": {"inference_requests": 3, "leaked_leases": 0, "duration_ms": 1},
+    }
+
+    async def verify(request, credential_id):
+        assert credential_id == "private-account@example.com"
+        return expected
+
+    monkeypatch.setattr(admin_routes, "run_full_verification", verify)
+    response = await _request(
+        app,
+        "POST",
+        "/api/credentials/antigravity/private-account%40example.com/verify",
+    )
+
+    assert response.status_code == 200
+    assert response.json() == expected
+    assert "private-account@example.com" not in response.text
+    assert "refresh-private" not in response.text
+
+
 async def test_web_ui_served():
     app = _make_admin_app()
     resp = await _request(app, "GET", "/")
     assert resp.status_code == 200
-    assert "hakimi" in resp.text.lower()
+    assert "<title>NA2H</title>" in resp.text
+    assert "<h1>NA2H</h1>" in resp.text
+    assert "hakimi-proxy" not in resp.text.lower()
+    assert 'id="languageSelect"' in resp.text
+    assert 'id="themeSelect"' in resp.text
+    assert "na2h-language" in resp.text
+    assert "na2h-theme" in resp.text
+    assert ':root[data-theme="light"]' in resp.text
+    assert "prefers-color-scheme: light" in resp.text
+    assert "function setLanguage" in resp.text
+    assert "function setTheme" in resp.text
+    assert "function tr(" in resp.text
+    assert "renderLocalizedState" in resp.text
+    assert "Full verification passed" in resp.text
+    assert "Shared quota unavailable" in resp.text
+    assert "Credential migration" in resp.text
+    assert "Settings saved." in resp.text
+    assert "testResultMessage(result)" in resp.text
     assert "testCredential" in resp.text
     assert "留空保持当前值" in resp.text
     assert "sidebar" not in resp.text.lower()
@@ -804,5 +858,9 @@ async def test_web_ui_served():
     assert "API 等价成本" in resp.text
     assert "Cached input" in resp.text
     assert "Reasoning" in resp.text
+    assert "完整自检" in resp.text
+    assert "verifyCredential" in resp.text
+    assert "下载脱敏报告" in resp.text
+    assert "将发起 3 次推理" in resp.text
     resp2 = await _request(app, "GET", "/ui")
     assert resp2.status_code == 200

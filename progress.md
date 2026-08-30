@@ -1,5 +1,194 @@
 # Progress Log
 
+## Phase 52 candidate review and local commit (2026-08-30)
+
+- The user authorized the proposed review-and-commit step after confirming the
+  real full-verification result. Scope is a local candidate commit only: no
+  push, release tag, version bump, deployment, live inference, or service restart.
+- Review started on `main` at `c007d0f` with an empty index. All pending files
+  belong to the accepted full-verification and localized Web work.
+- Private configuration, SQLite state, diagnostic journals, build outputs,
+  and environments remain excluded from the commit. Existing tests and the
+  operator's 9,871 ms live acceptance are the candidate baseline.
+- Review reproduced a verifier-only cleanup defect: exceeding the stream byte
+  limit left its body iterator suspended and one test-pool lease retained.
+  Explicitly closing that iterator triggers the existing downstream cleanup;
+  the fix belongs in the bounded verifier consumer, not in pool scheduling.
+- The bounded consumer now closes its iterator in `finally`; the real-pool
+  oversized-stream regression is GREEN and reports zero leaked leases.
+- Offline replay also reproduced an `AttributeError` for a non-object stage in
+  an otherwise passing stage sequence, while a failed report with the same
+  malformed element was accepted. Stage element types are now checked before
+  either status path; no report schema or normal successful behavior changed.
+- Full regression passes 192 tests in 5.79 seconds. Python compilation, lock
+  validation, both inline JavaScript parses, secret-shape scanning of the
+  candidate files, and diff whitespace checks pass. No private configuration,
+  database, environment, state, or build artifact is tracked.
+- The fake-upstream reliability gate passes 500/500 requests at concurrency 8,
+  with one maximum active upstream, successful signed two-turn Agent replay,
+  and zero leaked leases. No Google requests or service restart were involved.
+- The initial package build could not download `hatchling` within the sandbox;
+  the same build was retried with network approval and an isolated `/tmp`
+  output directory. It does not publish or overwrite existing packages.
+- The retry built the 0.6.0 wheel and source distribution successfully. Archive
+  inspection found the verification module and Web asset and no private config,
+  database, or runtime state. The wheel's `hakimi verify --help` smoke check
+  passes, its Web asset matches source, and both console entries are preserved.
+- Candidate review is complete. The local-only handoff covers the 16 reviewed
+  source, test, and documentation files; the package version remains 0.6.0.
+- Temporary build archives, their output directory, and the task-specific
+  build dependency cache were cleaned after verification; all are rebuildable.
+
+## Phase 50-51 completion and live acceptance (2026-08-30)
+
+- The user ran the Phase 49 Web full check against the real service and replayed
+  its redacted report. Local setup, OAuth, control plane, grouped quota, and the
+  non-streaming response passed; the first streamed Agent turn returned a
+  message and reasoning but no function call, so replay correctly reported the
+  saved report as structurally valid with `report_status=failed`.
+- The failure is in the verifier fixture, not evidence of an account, quota, or
+  signature-replay failure: the tool stage reused the text-only instruction
+  `Reply exactly: OK` and supplied tools without an explicit tool choice.
+- The user also authorized the complete Web product pass: browser-visible
+  identity becomes `NA2H`, language becomes zh-CN/English, and theme becomes
+  system/light/dark. The existing `hakimi` CLI and internal package identifiers
+  remain stable.
+- Agent-side acceptance used mocked regressions and the existing bounded
+  fake-upstream reliability gate without contacting Google. The user then
+  reported successful live Web full verification on 2026-08-30: three inference
+  requests completed in 9,871 ms.
+- The verifier contract test first failed on the reused text prompt, then passed
+  after splitting text/tool inputs and adding the named `list_files` choice only
+  to the first streamed request. The replay request has no forced tool choice.
+- Browser-visible `hakimi-proxy` / `HAKIMI PROXY` labels are replaced by `NA2H`.
+  The `hakimi` CLI and `hakimi_proxy` package remain unchanged.
+- The zero-build Web asset now exposes language and theme controls on both the
+  login and console surfaces. Language defaults from the browser, supports
+  zh-CN and English, persists as `na2h-language`, and redraws dynamic credential,
+  quota, verification, OAuth, migration, usage, and settings copy.
+- Theme defaults to system, supports explicit light/dark choices, persists as
+  `na2h-theme`, and initializes in the document head before CSS rendering.
+  Light-specific semantic status colors prevent dark-palette text from losing
+  contrast on a light surface.
+- Focused verification/admin/routes coverage passes 65 tests, and both inline
+  scripts parse in Node.
+- Real headless-Chrome inspection passed for an English/light desktop render
+  and an English/system-dark mobile render. A CDP interaction check then
+  switched the live DOM zh-CN/dark → English/light and confirmed translated
+  console headings, dynamic credential actions, migration modal copy, and both
+  synchronized preference controls.
+- Added independent adapter coverage proving the named Responses tool choice
+  reaches Gemini as `ANY` with only `list_files` in `allowedFunctionNames`.
+- Final repository regression passes 189 tests in 5.98 seconds. Python
+  compileall, `uv lock --check`, both inline JavaScript parses, secret-shape
+  scanning, and `git diff --check` pass.
+- The default 500-request fake-upstream reliability gate passes at concurrency
+  8 with 500 successes, one maximum active upstream, a signed two-turn Agent
+  replay ending `DONE`, and zero leaked leases. The gate made no Google requests.
+- Phases 50 and 51 are complete. No files were staged or committed, and all
+  temporary browser profiles, scripts, and screenshots were removed.
+
+## Phase 49 continuation (2026-08-30)
+
+- Recovered the current task from the maintained planning files and referenced
+  Codex thread after the interrupted turn.
+- Confirmed Phase 48 is complete and Phase 49 is the only active phase.
+- Preserved the existing dirty worktree: current changes are the expected
+  Phase 49 plan/tests plus internal credential-pinning seams; no verifier
+  module, live request, commit, or background process was created by recovery.
+- Resume point: inspect the exact RED tests and scoped diff, then implement the
+  smallest authenticated staged verifier and redacted report contract.
+- Reconfirmed the first tracer RED: `hakimi_proxy.verification` was absent and
+  test collection failed with `ModuleNotFoundError`.
+- First vertical slice is GREEN: response fingerprinting emits only allowlisted
+  structural fields and excludes output text and item IDs (1 focused test).
+- Core orchestration tracer is GREEN: setup reuses the exact credential lease,
+  inference reuses the production Responses facade with account pinning, the
+  streamed public tool call is replayed in memory, and the report contains no
+  credential, prompt/output, call-ID, project, or thought-signature values.
+- Quota-failure isolation passed without another code change: provider message
+  contents are discarded and all three inference requests still execute.
+- Offline replay tamper tracer is RED as expected: the initial schema validator
+  accepted a `passed` Agent stage with `thought_signature_present=false`.
+- Replay now rejects a passing report whose Agent signature, result-pairing, or
+  final-message invariant is false. All 4 verification-module tests pass.
+- Admin API tracer is RED as expected: the route module has no full-verification
+  entry point yet.
+- Authenticated admin verify route is GREEN and returns the core report unchanged
+  without introducing report persistence on the server.
+- CLI tracer is RED as expected: argparse currently offers only generate-key,
+  serve, and doctor.
+- Live `hakimi verify` slice is GREEN: it uses the authenticated loopback admin
+  API with `trust_env=false`, auto-selects the sole Antigravity account, prints
+  the report, and writes an optional JSON file with mode 0600.
+- Offline CLI replay is GREEN and completes without constructing an HTTP client.
+- Web UI tracer is RED as expected: the credential card has no full-verification
+  label or action yet.
+- Web UI slice is GREEN: each Antigravity card has an explicit 3-inference
+  confirmation, independent busy/result state, and a client-side download for
+  the already-redacted report.
+- Focused integration verification passed 95 tests across verification, admin,
+  CLI, Responses, public routes, and the reliability gate.
+- GREEN review tracer reproduced a false pass for an empty non-stream response;
+  visible `output_text` is now a required stage invariant and the focused test
+  passes.
+- A second tracer reproduced a false pass for an unsigned streamed function
+  call. The stage now requires both a function call and either its native
+  signature or a detached reasoning carrier; the focused test passes.
+- A third tracer reproduced a false pass when the second Agent turn completed
+  without visible text. `agent_replay` now fails with a structural
+  `missing_final_message` signal; the focused test passes.
+- Offline replay now validates the exact seven-stage passing sequence, three
+  inference attempts, zero selected-account lease leaks, and non-stream/tool/
+  final structural fingerprints. All 8 verification tests pass.
+- Lease-leak tracer reproduced a report-level false pass when release was
+  deliberately suppressed. Leak evidence is now scoped to the pinned account
+  and any residual lease fails the report; the focused test passes.
+- Added a direct shared-runner regression for the recovered pinning seam: with
+  two credentials, the internal verifier selector leases only the requested ID,
+  performs one attempt, and releases it. The focused test passes.
+- Updated README and Unreleased changelog for the manual three-request contract,
+  CLI run/replay, Web action, API route, report redaction, and no-background-
+  traffic boundary.
+- First post-refactor focused run reached 100 passes and one test-isolation
+  failure: the standalone pinning test had written usage into the legacy fixed
+  `/tmp/hakimi_test_routes.db`. The test now receives its own `tmp_path` store.
+- Removed only that task-created `/tmp/hakimi_test_routes.db` artifact; it is
+  non-recoverable test data and is regenerated by tests when needed. The
+  corrected focused integration set passes 101 tests.
+- Full repository regression passes 188 tests in 5.58 seconds.
+- Python compileall, `uv lock --check`, inline Web JavaScript parsing, and
+  `git diff --check` all pass.
+- Default reliability gate passes 500/500 requests at concurrency 8 with one
+  maximum active upstream, correct 429/503/timeout classification, signed
+  two-turn Agent replay ending `DONE`, and zero leaked leases.
+- CLI help acceptance passed. Changed/untracked-file token-shape scanning found
+  no API key, OAuth token, client-secret, refresh-token, or generated deployment
+  key pattern. Final behavior was verified without contacting Google.
+- Phase 49 is complete. No files were staged or committed, and EMP remained
+  untouched.
+
+## Phase 49 start (2026-08-29)
+
+- Locked the first reliability slice to one explicit Antigravity full-check
+  action: local configuration, OAuth refresh, control plane, shared quota,
+  non-streaming Responses, streaming signed tool call, and tool-result replay.
+- Kept the action manual and bounded to three inference requests; no background
+  polling, scheduler changes, raw response storage, or new persistent report
+  database is in scope.
+- Added RED acceptance for deterministic account pinning, stage ordering,
+  quota-failure continuation, zero leaked leases, allowlisted fingerprints,
+  secret/output/signature redaction, Web affordances, CLI private report output,
+  and network-free saved-report replay.
+- The focused suite fails at collection exactly because
+  `hakimi_proxy.verification` does not exist yet; production implementation has
+  not been added.
+- Recovery audit after repeated task interruptions found no residual Uvicorn,
+  pytest, reliability-gate, or uv processes. `git diff --check` passes and the
+  only dirty files are the planned Phase 49 tests, planning records, and two
+  internal routing edits. The exact resume point is creation of the verification
+  module followed by Admin/CLI/Web wiring.
+
 ## Phase 48 start (2026-08-29)
 
 - User corrected the product model: Gemini quota is principally one shared

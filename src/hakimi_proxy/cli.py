@@ -18,6 +18,7 @@ import httpx
 from hakimi_proxy import __version__
 from hakimi_proxy.config import ProxyConfig, load_config, save_config
 from hakimi_proxy.proxy import configure_proxy_environment
+from hakimi_proxy.verification import replay_verification_report
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -42,6 +43,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="credential to test when more than one account is configured",
     )
     doctor.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+
+    verify = subparsers.add_parser(
+        "verify",
+        help="run or replay the bounded Antigravity verification report",
+    )
+    verify.add_argument("--config", help="path to the YAML configuration file")
+    verify.add_argument("--credential", help="Antigravity credential ID")
+    verify.add_argument("--output", help="write the redacted report to this JSON file")
+    verify.add_argument("--replay", help="validate a saved report without network access")
+    verify.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     return parser
 
 
@@ -392,6 +403,109 @@ def _serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def _emit_verification(report: dict[str, object], *, as_json: bool) -> None:
+    if as_json:
+        print(json.dumps(report, ensure_ascii=False))
+        return
+    print(f"NA2H verification: {report.get('status', 'unknown')}")
+    if "report_status" in report:
+        print(f"- saved report status: {report['report_status']}")
+    summary = report.get("summary")
+    if isinstance(summary, dict):
+        print(f"- inference requests: {summary.get('inference_requests', 0)}")
+        print(f"- leaked leases: {summary.get('leaked_leases', 0)}")
+
+
+def _write_private_report(path: Path, report: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            descriptor = -1
+            json.dump(report, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+        path.chmod(0o600)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _verify(args: argparse.Namespace) -> int:
+    if args.replay:
+        try:
+            payload = json.loads(
+                Path(args.replay).expanduser().read_text(encoding="utf-8")
+            )
+            if not isinstance(payload, dict):
+                raise ValueError("verification report must be an object")
+            result = replay_verification_report(payload)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            result = {"status": "invalid", "error_type": type(exc).__name__}
+            _emit_verification(result, as_json=args.json)
+            return 1
+        _emit_verification(result, as_json=args.json)
+        return 0
+
+    config_path = _selected_config_path(args.config)
+    try:
+        config = load_config(config_path)
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        result = {"status": "invalid_config", "error_type": type(exc).__name__}
+        _emit_verification(result, as_json=args.json)
+        return 1
+
+    base_url = _local_base_url(config.host, config.port)
+    headers = _authorization_headers(config.auth_token)
+    try:
+        with httpx.Client(timeout=180.0, trust_env=False) as client:
+            response = client.get(base_url + "/api/credentials", headers=headers)
+            response.raise_for_status()
+            payload = response.json()
+            candidates = [
+                str(item["id"])
+                for item in payload.get("antigravity", [])
+                if isinstance(item, dict) and item.get("id")
+            ]
+            selector = args.credential or ""
+            if selector.startswith("antigravity:"):
+                selector = selector.partition(":")[2]
+            if selector:
+                selected = selector if selector in candidates else None
+            else:
+                selected = candidates[0] if len(candidates) == 1 else None
+            if selected is None:
+                result = {
+                    "status": "selection_required",
+                    "candidate_count": len(candidates),
+                }
+                _emit_verification(result, as_json=args.json)
+                return 1
+            response = client.post(
+                f"{base_url}/api/credentials/antigravity/"
+                f"{quote(selected, safe='')}/verify",
+                headers=headers,
+            )
+            report = response.json()
+            if response.status_code != 200 or not isinstance(report, dict):
+                result = {"status": "unavailable", "http_status": response.status_code}
+                _emit_verification(result, as_json=args.json)
+                return 1
+    except (httpx.HTTPError, ValueError, TypeError, KeyError) as exc:
+        result = {"status": "unavailable", "error_type": type(exc).__name__}
+        _emit_verification(result, as_json=args.json)
+        return 1
+
+    if args.output:
+        try:
+            _write_private_report(Path(args.output).expanduser(), report)
+        except OSError as exc:
+            result = {"status": "write_failed", "error_type": type(exc).__name__}
+            _emit_verification(result, as_json=args.json)
+            return 1
+    _emit_verification(report, as_json=args.json)
+    return 0 if report.get("status") == "passed" else 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the public `hakimi` command."""
     args = _build_parser().parse_args(argv)
@@ -402,6 +516,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _serve(args)
     if args.command == "doctor":
         return _doctor(args)
+    if args.command == "verify":
+        return _verify(args)
     return 2
 
 

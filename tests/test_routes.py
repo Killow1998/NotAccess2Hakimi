@@ -4,6 +4,7 @@ import asyncio
 import json
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 from httpx2 import ASGITransport, AsyncClient
@@ -15,6 +16,7 @@ from hakimi_proxy.adapters.aistudio import AIStudioAdapter
 from hakimi_proxy.adapters.antigravity import AntigravityAdapter
 from hakimi_proxy.metering.models import TokenBreakdown, UsageRecord
 from hakimi_proxy.metering.store import UsageStore
+from hakimi_proxy.routes.chat import _run_chat_completion
 
 
 def _make_app_with_state():
@@ -258,6 +260,43 @@ async def test_chat_no_credentials_returns_503():
     })
     assert resp.status_code == 503
     assert "exhausted" in resp.json()["error"]["message"]
+
+
+async def test_internal_verification_pin_uses_exact_credential(monkeypatch, tmp_path):
+    app = _make_app_with_state()
+    app.state.store = UsageStore(tmp_path / "pinning.db")
+    app.state.pool.add_aistudio(AIStudioCredential(id="second-ai", api_key="fake-key-2"))
+    calls = []
+
+    async def fake_forward(body, cred, stream, client):
+        calls.append(cred.id)
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", "https://upstream.test"),
+            json={
+                "choices": [{
+                    "message": {"role": "assistant", "content": "ok"},
+                    "finish_reason": "stop",
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            },
+        )
+
+    monkeypatch.setattr(app.state.aistudio, "forward", fake_forward)
+
+    response = await _run_chat_completion(
+        SimpleNamespace(app=app),
+        {
+            "model": "gemini-3.7-flash",
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+        credential_id="second-ai",
+        provider="aistudio",
+    )
+
+    assert response.status_code == 200
+    assert calls == ["second-ai"]
+    assert app.state.pool.get_status()[1]["in_flight"] == 0
 
 
 async def test_chat_stream_retries_before_first_upstream_event(monkeypatch):

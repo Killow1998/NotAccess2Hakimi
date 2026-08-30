@@ -1,5 +1,64 @@
 # Findings & Decisions
 
+## Phase 49 recovery (2026-08-30)
+
+- The referenced Codex thread is idle and paginates successfully, but its most
+  recent items are blank/truncated through the thread API. The repository's
+  maintained plan/findings/progress records are therefore the authoritative
+  continuation source.
+- Continue Phase 49 as vertical TDD slices from the existing RED boundary;
+  avoid adding all remaining verifier behavior in one horizontal batch.
+- The scoped production diff adds only internal keyword-only provider/account
+  pinning to the shared Chat and Responses runners. Public routes remain
+  unchanged and pinned calls are limited to one credential attempt.
+- Existing Phase 49 RED coverage specifies three public surfaces: an admin
+  verify endpoint/Web control, `hakimi verify` report write/replay, and a
+  redaction/orchestration module. `hakimi_proxy.verification` is intentionally
+  absent at the recovered breakpoint.
+- Existing admin Test/quota actions already provide the setup mechanics to
+  reuse: acquire the exact account, refresh OAuth, call `check_control_plane`
+  and `fetch_quota` with one client, and release in `finally`. The full verifier
+  can release that setup lease before invoking Responses so each production
+  request owns its normal lease lifecycle.
+- Safe report failures should derive from `classify_exception` but copy only
+  allowlisted type/status metadata; `UpstreamFailure.message` may echo provider
+  text and must never enter the downloadable report.
+- The reliability gate's completed-SSE parser is a suitable behavioral pattern,
+  but the verifier needs a bounded byte collector because it consumes a live
+  `StreamingResponse` body iterator in process.
+- The production app already exposes `upstream_client_factory`; using it keeps
+  full verification on the same configured proxy/transport boundary and makes
+  offline tests deterministic.
+- Reuse the reliability gate's proven Responses Agent request shape verbatim:
+  a `list_files` function declaration, first streamed turn, replay of all public
+  output items, then one JSON-string `function_call_output`. Live verification
+  adds account pinning but does not invent a second protocol fixture.
+- CLI verification should mirror `doctor --live`: load only the selected local
+  config, disable environment proxy inheritance for loopback, enumerate the
+  authenticated admin credential list, and invoke the credential-scoped route.
+  Report files must be created/chmodded mode 0600; offline replay must not
+  construct an HTTP client.
+- GREEN review found that structural evidence must drive stage status, not just
+  be recorded beside it. A non-stream response without visible text, a streamed
+  tool turn without a call/signature, or a second turn without final text must
+  make the corresponding stage fail in the generated report.
+- Offline replay is deliberately structural, not cryptographically attested:
+  validate the fixed seven-stage passing contract and its allowlisted protocol
+  booleans/fingerprints, but do not add signatures, frozen baselines, or report
+  persistence.
+- Lease leak evidence should measure the verifier's selected credential after
+  its three pinned calls, not unrelated concurrent accounts in the same pool.
+- README already has the right operator locations: extend `Diagnose setup` with
+  `hakimi verify`, add the Web card's explicit cost/manual semantics beside
+  quota refresh, add the authenticated verify endpoint to the API table, and
+  list `verification.py` in project structure. Changelog work belongs under
+  the existing Unreleased section; no release/version bump is implied yet.
+- Final acceptance is entirely offline/fake-upstream by design: no authorized
+  live Google request was needed to prove the new composition because each
+  production seam is exercised by route/adapter tests and the existing signed
+  Agent gate. The operator remains in control of the explicit three-request
+  live action.
+
 ## Phase 48 shared-window correction (2026-08-29)
 
 - The current per-model snapshot is technically parseable but semantically too
@@ -563,3 +622,133 @@
 - Responses usage details are additive: legacy responses without Chat detail
   objects retain exactly `input_tokens`, `output_tokens`, and `total_tokens`,
   while detailed AGY responses add the standard Responses detail objects.
+
+## Phase 49 unified verification boundary (2026-08-29)
+
+- The repository already has three trustworthy seams that must be composed,
+  not replaced: the staged credential Test endpoint, explicit manual quota
+  refresh, and the public two-turn signed Agent tracer in the reliability gate.
+- `hakimi doctor --live` currently calls the Test endpoint and already owns
+  config selection, account disambiguation, local-service/version checks, and
+  safe terminal output. The new command should extend this client pattern and
+  must not import adapter internals or create a second OAuth lifecycle.
+- The full verification action must remain manual and Antigravity-scoped in its
+  first slice. It may consume a bounded number of inference calls, but it must
+  never become a page-refresh side effect or a background health signal.
+- The current Test endpoint already holds one explicit credential lease while
+  it performs OAuth, `loadCodeAssist`, and one non-stream inference request.
+  Quota refresh is a separate explicit route with the same lease discipline.
+- The maintained Agent tracer deliberately crosses `/v1/responses` twice and
+  proves thought-signature replay, tool-result pairing, final visible output,
+  and zero leaked leases. Its transport is fake by design, so live verification
+  must reuse the public route shape rather than claiming this gate contacted
+  Google.
+- The diagnostic journal is intentionally a tiny flat operational allowlist.
+  Verification reports should be returned/downloaded on demand from a separate
+  immutable safe schema, not widen the always-on JSONL journal with protocol
+  details.
+- The public Responses route is already a thin facade over one shared
+  `_run_chat_completion` function. Adding an optional internal credential
+  selector to that shared function can make verification deterministic without
+  exposing a routing header or request field to normal API clients.
+- Verification must not hold its setup lease while it invokes the public
+  Responses path: the pool enforces one in-flight request per credential, so
+  setup stages must release before each inference stage reacquires the selected
+  account. This also makes leaked-lease assertions meaningful.
+- One non-stream text request plus a streaming two-turn function-call round trip
+  covers both response modes and signed Agent replay in three inference calls.
+  A separate synthetic streaming-text call would add quota cost without proving
+  a materially different boundary.
+- The admin Test response is a mutable health action and includes the raw local
+  credential ID. A portable downloadable verification report needs a stricter
+  schema: hash the account reference, keep only stage/status/latency and
+  allowlisted protocol facts, and omit provider messages entirely.
+- The least invasive deterministic routing seam is an optional keyword-only
+  `credential_id` on the internal Chat/Responses runners. Normal public routes
+  pass nothing and retain LRU/failover; the authenticated verifier pins exactly
+  the selected Antigravity account and one attempt per stage.
+- The Web UI already renders manual Test and quota actions per credential. The
+  full verifier belongs beside those controls with an explicit quota-cost
+  warning and a client-side download of the already-redacted JSON response.
+- The existing card renderer has separate busy keys for Test and quota. Full
+  verification can use `verify:<id>` and keep results per credential without
+  introducing another page or global modal state.
+- The report download can remain entirely client-side (`Blob` + object URL):
+  the server returns only the allowlisted report, and no durable report store,
+  retention policy, or additional secret-bearing endpoint is required.
+- The Responses facade preserves signature carriers and tool-call
+  `extra_content` in completed output. A verifier can replay the first turn's
+  public output verbatim in memory, append a fixed synthetic tool result, and
+  prove the same production converter accepts turn two without exporting IDs,
+  signatures, prompts, or generated text.
+- A successful full check needs only three generation requests: one
+  non-streaming text response, then the two streaming Agent turns. OAuth,
+  control-plane, and quota remain separately timed setup stages.
+- The internal pinning seam is now implemented as keyword-only arguments on
+  the shared Chat and Responses runners. Public `/v1/*` calls still pass no
+  selector, so their LRU/failover contract is unchanged; only authenticated
+  in-process verification can request one credential ID and one attempt.
+- Post-interruption recovery confirmed the checkout contains only the expected
+  Phase 49 plan/tests and the two internal routing edits. No verification
+  module, live request, commit, or background command was partially created.
+
+## Phase 50 live verifier correction and Phase 51 Web direction (2026-08-30)
+
+- The user's redacted live report isolates the failure to `responses_stream`:
+  it completed with visible message/reasoning output and a thought-signature
+  carrier but no `function_call`; `agent_replay` therefore did not run. All
+  setup stages and the non-streaming inference passed, and no lease leaked.
+- Before the correction, the verifier reused `Reply exactly: OK` for both the
+  text probe and the tool probe. Supplying a tool declaration alone permits a model to answer
+  directly, so the fake reliability transport hid a live model-choice branch.
+- The Responses facade already accepts an explicit named function choice. The
+  implemented fixture repair uses a separate tool instruction plus
+  `{"type":"function","name":"list_files"}` on only the first streamed
+  request. Carrying that forced choice into the replay turn would prevent the
+  final visible response and is therefore incorrect.
+- Product-facing Web identity and implementation identity are separate. Use
+  `NA2H` in the browser while retaining `hakimi` as the stable CLI command and
+  `hakimi_proxy` as the existing package namespace.
+- EMP provides the relevant zero-build interaction pattern: persisted language
+  and theme selects, CSS custom-property palettes, a system preference, and
+  translation helpers. NA2H adopted that pattern within its existing single
+  HTML asset without introducing a frontend framework or build chain.
+- i18n acceptance must cover dynamic status, error, confirmation, quota,
+  verification, and OAuth messages as well as static labels. API identifiers,
+  model IDs, provider names, and machine-readable error types stay unchanged.
+- Storing localized result sentences in UI state would leave stale-language
+  content after a preference change. Credential Test and full verification now
+  retain structural result fields and derive their visible sentence at render
+  time, so switching language updates already-completed results as well.
+- Both login and authenticated views need preference controls: otherwise an
+  operator who cannot yet authenticate cannot select a readable language or
+  theme. Shared classes keep the duplicate controls synchronized.
+- Headless Chrome confirms the system theme follows both light and forced-dark
+  OS preferences at desktop/mobile widths. A direct browser interaction check
+  confirms explicit `dark` and `light` choices and zh-CN/English choices update
+  the root attributes and all mirrored selects.
+
+## Phase 52 candidate review (2026-08-30)
+
+- The commit scope is the pending full-verification core, its admin/CLI/Web
+  entry points, the private account-pinning seam, localized Web presentation,
+  regression tests, and maintained documentation. Private config and runtime
+  artifacts are ignored and the pre-existing index is empty.
+- Public request handlers do not accept the internal credential selector;
+  normal provider selection and failover remain unchanged. CLI report replay
+  executes before config loading or HTTP-client construction.
+- The oversized-stream regression reproduced one retained credential lease;
+  explicitly closing the consumer iterator released it through the existing
+  Responses cleanup chain. The bounded verifier now closes in `finally`, with
+  a real-pool regression covering early exit and zero retained leases.
+- Replay previously crashed on a non-object stage in a passing report and
+  accepted the same malformed stage in a failed report. Validating stage
+  element types before status-specific checks fixes both cases without changing
+  the report schema or loading configuration or credentials.
+- Source and regression review found no further change required for the
+  accepted scope. The current pass uses only fake upstreams; the operator's
+  reported live success remains the real-service acceptance evidence.
+- Packaging retains both console entries and includes the verifier and updated
+  Web asset. Wheel and source-distribution inspection found no private
+  configuration, database, environment, or runtime state; the wheel CLI smoke
+  check and byte-for-byte Web asset comparison pass.

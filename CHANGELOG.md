@@ -6,6 +6,17 @@ All notable changes to NotAccess2Hakimi are documented here.
 
 ### Added
 
+- A manual, per-account Antigravity full verification that composes local
+  setup, OAuth, control-plane, quota, non-streaming Responses, and a streamed
+  signed two-turn Agent replay in exactly three inference requests.
+- `hakimi verify` for authenticated loopback execution, mode-0600 report output,
+  and network-free structural replay of saved reports.
+- An inline Web credential-card action with an explicit inference-cost warning
+  and client-side download of the redacted report.
+- Complete Simplified Chinese and English Web UI copy, including dynamic
+  credential, quota, verification, OAuth, migration, usage, and settings states.
+- Persisted system, light, and dark Web themes, available before and after
+  authentication; system is the default.
 - A manual Antigravity quota refresh on each credential card, backed primarily
   by the upstream Gemini shared-pool 5h and Weekly/7d windows and an in-memory
   last-successful snapshot. Page loads never poll Google.
@@ -18,20 +29,44 @@ All notable changes to NotAccess2Hakimi are documented here.
   `gemini-3.7-flash-tiered`, including cached-input and thinking-token prices.
 - Quota lookup failures no longer disturb inference health or erase the last
   successful quota snapshot.
+- Full-verification stages fail when visible response text, a function call,
+  thought-signature carrier, final Agent message, or selected-account lease
+  cleanup is missing.
+- The live full-verification tool stage now uses its own instruction and an
+  explicit first-turn `list_files` choice instead of reusing the text probe and
+  allowing the model to skip the function call.
+- Bounded verification stream consumption closes its iterator on early exit,
+  so the byte limit cannot leave a credential lease suspended.
+- Offline verification replay rejects non-object stages through its normal
+  invalid-report path instead of crashing or accepting malformed failed reports.
+
+### Security
+
+- Verification reports use an allowlist of stage/status/latency, safe error
+  metadata, and protocol structure only. Prompts, outputs, OAuth values,
+  provider messages, call IDs, thought signatures, project IDs, proxy URLs,
+  and deployment keys are never retained.
 
 ### Changed
 
 - Usage cost labels now explicitly describe an API list-price equivalent, not
   an Antigravity bill or account balance.
+- Browser-visible product branding is now `NA2H`; the stable `hakimi` CLI and
+  `hakimi_proxy` Python package identifiers are unchanged.
 - Replaced misleading per-model quota rows with responsive, accessible shared
   window progress bars; model catalog quota data is now only a degraded
   availability fallback.
 
 ### Verified
 
-- Passed 175 automated tests, Python compilation, lock validation, inline Web
-  UI JavaScript parsing, and the 500-request fake-upstream Agent reliability
-  gate with zero leaked credential leases.
+- Passed 192 automated tests, Python compilation, lock validation, inline Web
+  UI JavaScript parsing, interactive zh-CN/English and light/dark browser checks,
+  and the 500-request fake-upstream Agent reliability gate with zero leaked
+  credential leases.
+- Built the 0.6.0 wheel and source distribution, checked the packaged verification
+  CLI and Web asset, and excluded private configuration and runtime data.
+- Operator-reported live Web full verification passed on 2026-08-30 with three
+  inference requests in 9,871 ms after the tool-choice correction.
 
 ## [0.6.0] - 2026-08-28
 

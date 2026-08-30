@@ -31,6 +31,7 @@ from hakimi_proxy.pool import CredentialPool
 from hakimi_proxy.errors import UpstreamError, classify_exception, classify_response
 from hakimi_proxy.proxy import configure_proxy_environment
 from hakimi_proxy.oauth import AntigravityOAuthManager, exchange_oauth_code
+from hakimi_proxy.verification import run_full_verification
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
@@ -588,6 +589,25 @@ async def refresh_antigravity_quota(cred_id: str, request: Request):
     finally:
         await client.aclose()
         await pool.release(credential)
+
+
+@router.post("/credentials/antigravity/{cred_id}/verify")
+async def verify_antigravity_credential(cred_id: str, request: Request):
+    """Run the bounded, manual full-verification workflow for one account."""
+    credential = next(
+        (
+            item
+            for item in request.app.state.pool.all_credentials
+            if item.kind == "antigravity" and item.id == cred_id
+        ),
+        None,
+    )
+    if credential is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": {"message": "Credential not found"}},
+        )
+    return await run_full_verification(request, cred_id)
 
 
 @router.post("/credentials/{kind}/{cred_id}/test")

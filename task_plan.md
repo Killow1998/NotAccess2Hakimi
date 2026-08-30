@@ -6,7 +6,7 @@ preserving its verified AI Studio and authorized Antigravity paths, public
 OpenAI-compatible contracts, and strict credential boundary.
 
 ## Current Phase
-Phase 48 complete; shared-window quota model and progress-bar UI
+Phase 52 complete; reviewed full-verification and localized Web candidate
 
 ## Phases
 
@@ -351,6 +351,37 @@ Phase 48 complete; shared-window quota model and progress-bar UI
 - [x] Update operator documentation and run focused/full/reliability acceptance
 - **Status:** complete
 
+### Phase 49: Unified full verification and redacted evidence
+- [x] Define one explicit, bounded Antigravity verification contract that reuses existing health, quota, Responses, and Agent seams
+- [x] Add RED tests for staged API/CLI/Web results, safe failure classification, and report redaction
+- [x] Implement local config, OAuth, control-plane, quota, non-stream, stream, and signed two-turn tool-call stages without background traffic
+- [x] Produce a downloadable allowlisted report with structural protocol fingerprints only; never retain prompts, outputs, tokens, or credentials
+- [x] Add offline fixture replay for the protocol fingerprint and verify deterministic pass/fail behavior without Google access
+- [x] Run focused/full tests, compile/JS checks, reliability gate, and secret/diff review
+- **Status:** complete
+
+### Phase 50: Deterministic live verification tool turn
+- [x] Add a regression that distinguishes the text probe from the tool-call probe
+- [x] Force `list_files` only on the first streamed Agent turn and preserve an unconstrained final turn
+- [x] Run focused, full, reliability, syntax, and diff verification without contacting Google
+- [x] Receive operator confirmation of live Web full verification: three inference requests in 9,871 ms on 2026-08-30
+- **Status:** complete
+
+### Phase 51: NA2H Web identity, i18n, and themes
+- [x] Replace browser-visible `hakimi-proxy` branding with `NA2H` while preserving the `hakimi` CLI and Python package
+- [x] Add complete zh-CN/English translation for static and dynamic user-facing Web copy with a persisted preference
+- [x] Add persisted system/light/dark theme selection with a system default and no-flash initialization
+- [x] Verify responsive UI structure, inline JavaScript, focused/full tests, and documentation
+- **Status:** complete
+
+### Phase 52: Review and local candidate commit preparation
+- [x] Review all pending source, test, and documentation changes against the accepted verification and Web scope
+- [x] Correct reproduced verification boundary defects and retain regression coverage
+- [x] Re-run automated checks and package verification; exclude private configuration, runtime data, and temporary artifacts
+- [x] Prepare the explicit 16-file source, test, and documentation scope for the local commit
+- [x] Preserve local-only delivery constraints: no push, tag, version bump, deployment, live inference, or service restart
+- **Status:** complete
+
 ## Decisions Made
 
 | Decision | Rationale |
@@ -365,6 +396,8 @@ Phase 48 complete; shared-window quota model and progress-bar UI
 
 | Error | Attempt | Resolution |
 |-------|---------|------------|
+| Candidate package build could not download `hatchling` in the sandbox | 1 | Retry the unchanged build with network approval and an isolated `/tmp` output directory |
+| Temporary build-directory removal found a generated `.gitignore` after archive cleanup | 1 | Inspect the exact temporary directory, remove the task-created marker, and remove the empty directory |
 | Hakimi Python/dependency environment unavailable in prior inspection | 1 | Reuse installed Python where possible or build an isolated `/tmp` environment |
 | Real AI Studio stream emitted `data: data: {...}` | 1 | Fix the shared adapter/route SSE contract and add a regression test |
 | `uv lock` could not reach PyPI inside the sandbox | 1 | Re-run through the configured local proxy with network approval |
@@ -411,3 +444,20 @@ Phase 48 complete; shared-window quota model and progress-bar UI
 | Phase 47 cache invalidation landed in the AI Studio update route | 1 | Move the statement to the Antigravity OAuth-identity update branch and keep AI Studio behavior unchanged |
 | Combined Phase 47 code/test/error-log patch used the wrong file context | 1 | Split production/test repair from the planning-log append and apply each against its exact file |
 | Looked for a nonexistent `tests/test_usage.py` while adding public usage coverage | 1 | Locate the existing `/v1/usage` acceptance in `tests/test_routes.py` and extend that real boundary instead |
+| Phase 49 replay accepted a passing report with a false signature invariant | 1 | Expected RED; validate the passing Agent evidence before declaring an offline report structurally valid |
+| Phase 49 admin verify route was absent | 1 | Expected RED; expose the verified core through one authenticated Antigravity credential route |
+| `hakimi verify` was rejected by argparse | 1 | Expected RED; add the bounded local-API client command and offline replay mode |
+| Phase 49 Web UI lacked the full-verification action | 1 | Expected RED; add the manual per-Antigravity-card control, inline result, and client-side report download |
+| Full verification marked an empty non-stream response as passed | 1 | Expected RED; make visible output a required structural invariant for that stage |
+| Full verification marked an unsigned streamed tool call as passed | 1 | Expected RED; require a function call plus a native or detached thought-signature carrier |
+| Full verification marked an empty Agent replay as passed | 1 | Expected RED; require visible final output after the tool result is accepted |
+| Offline replay accepted a passing report with a false non-stream fingerprint | 1 | Expected RED; validate the fixed passing stage set, summaries, and allowlisted response fingerprints |
+| Full verification reported passed with a selected-account lease leak | 1 | Expected RED; scope leak evidence to the pinned account and make any residual lease fail the report |
+| Focused suite read one stale usage row from `/tmp/hakimi_test_routes.db` | 1 | The new pinning test reused a fixed legacy fixture DB; isolate it with `tmp_path` and remove only the task-created temp DB |
+| Verification-command search included a nonexistent `scripts/` path | 1 | Use the maintained README and CI workflow as the authoritative command sources |
+| Live full verification allowed the model to answer text instead of calling the declared tool | 1 | Separate the text/tool prompts and force `list_files` only on the first streamed Agent turn |
+| Headless Chrome was terminated by the managed sandbox before writing a screenshot | 1 | Re-run the same local-file visual check with narrow browser permission; desktop and mobile renders then succeeded |
+| Parallel final JavaScript parse over-escaped the inline-script regular expression | 1 | Re-run the previously proven Node parser with one shell-escape layer; no application code change required |
+| Final line-number search left Markdown backticks unquoted for the shell | 1 | Re-run the read-only search with a single-quoted pattern; no repository command or application behavior was affected |
+| Candidate review reproduced a retained credential lease after the verifier stream exceeded its byte limit | 1 | Add explicit iterator cleanup around bounded stream consumption and retain a real-pool regression |
+| Replay crashed on a non-object stage in a passing report and accepted the same malformed failed report | 1 | Validate every stage as an object before status-specific replay checks; return the existing invalid-report error path |

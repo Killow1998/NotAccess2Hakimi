@@ -1,16 +1,46 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="dark">
+<html lang="zh-CN" data-theme="system">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>hakimi-proxy</title>
+<title>NA2H</title>
+<script>
+try {
+  const savedTheme = localStorage.getItem('na2h-theme');
+  document.documentElement.dataset.theme = ['system', 'light', 'dark'].includes(savedTheme) ? savedTheme : 'system';
+} catch (error) { document.documentElement.dataset.theme = 'system'; }
+</script>
 <style>
 :root {
   --bg: #0d1117; --surface: #161b22; --surface-2: #1c2330; --border: #30363d;
   --text: #e6edf3; --muted: #8b949e; --blue: #58a6ff; --blue-bg: #1f3b5b;
   --green: #3fb950; --yellow: #d29922; --red: #f85149; --radius: 8px;
+  --success-text: #aff5b4; --warning-text: #e3b341; --error-text: #ffb4ae;
+  --subtle-surface: rgba(255,255,255,.015); --embedded-surface: rgba(0,0,0,.12);
+  --quota-surface: rgba(13,17,23,.52); --overlay: rgba(0,0,0,.7);
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --bg: #f6f8fa; --surface: #ffffff; --surface-2: #f3f4f6; --border: #d0d7de;
+  --text: #1f2328; --muted: #59636e; --blue: #0969da; --blue-bg: #ddf4ff;
+  --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+  --success-text: #116329; --warning-text: #7d4e00; --error-text: #a40e26;
+  --subtle-surface: rgba(31,35,40,.025); --embedded-surface: rgba(31,35,40,.035);
+  --quota-surface: rgba(255,255,255,.72); --overlay: rgba(31,35,40,.45);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    --bg: #f6f8fa; --surface: #ffffff; --surface-2: #f3f4f6; --border: #d0d7de;
+    --text: #1f2328; --muted: #59636e; --blue: #0969da; --blue-bg: #ddf4ff;
+    --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+    --success-text: #116329; --warning-text: #7d4e00; --error-text: #a40e26;
+    --subtle-surface: rgba(31,35,40,.025); --embedded-surface: rgba(31,35,40,.035);
+    --quota-surface: rgba(255,255,255,.72); --overlay: rgba(31,35,40,.45);
+    color-scheme: light;
+  }
 }
 * { box-sizing: border-box; }
 body { margin: 0; overflow-x: hidden; background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
@@ -33,6 +63,11 @@ a { color: var(--blue); }
 .login-box h1 { margin: 0 0 5px; font-size: 22px; }
 .login-box p { margin: 0 0 20px; color: var(--muted); }
 .login-box input { margin-bottom: 12px; }
+.preferences { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
+.login-preferences { margin: 18px 0 0; padding-top: 16px; border-top: 1px solid var(--border); }
+.preference-control { min-width: 116px; margin: 0; }
+.preference-control span { display: block; margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 600; }
+.preference-control select { min-width: 116px; padding: 6px 28px 6px 8px; font-size: 12px; }
 .remember-login { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; color: var(--muted); font-size: 13px; }
 .remember-login input { width: auto; margin: 0; }
 .app { width: min(1180px, 100%); margin: 0 auto; padding: 30px 24px 52px; }
@@ -59,7 +94,7 @@ a { color: var(--blue); }
 .onboarding p { margin: 0; color: var(--muted); }
 .onboarding .actions { margin-top: 14px; justify-content: flex-start; }
 .integration-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
-.integration-item { padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: rgba(0,0,0,.12); }
+.integration-item { padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--embedded-surface); }
 .integration-item span { display: block; margin-bottom: 3px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
 .integration-item code { font: 12px/1.5 var(--mono); overflow-wrap: anywhere; }
 .panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
@@ -71,13 +106,13 @@ a { color: var(--blue); }
 .provider-heading h3 { margin: 0; font-size: 14px; }
 .provider-heading span { color: var(--muted); font-size: 12px; }
 .credential-list { display: grid; gap: 9px; }
-.credential-card { padding: 13px 14px; border: 1px solid var(--border); border-radius: 7px; background: rgba(255,255,255,.015); }
+.credential-card { padding: 13px 14px; border: 1px solid var(--border); border-radius: 7px; background: var(--subtle-surface); }
 .credential-main { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
 .credential-name { margin-bottom: 4px; font-weight: 650; }
 .credential-meta { display: flex; gap: 8px; flex-wrap: wrap; color: var(--muted); font: 12px var(--mono); overflow-wrap: anywhere; }
 .credential-meta span + span::before { content: "·"; margin-right: 8px; color: var(--border); }
 .credential-runtime { margin-top: 9px; color: var(--muted); font-size: 11px; }
-.credential-runtime .runtime-error { color: #ffb4ae; }
+.credential-runtime .runtime-error { color: var(--error-text); }
 .quota-panel { position: relative; overflow: hidden; margin-top: 12px; padding: 15px; border: 1px solid rgba(88,166,255,.24); border-radius: 10px; background: linear-gradient(135deg, rgba(88,166,255,.09), rgba(46,160,67,.035)); }
 .quota-panel::after { content: ""; position: absolute; width: 150px; height: 150px; right: -70px; top: -95px; border-radius: 50%; background: rgba(88,166,255,.09); filter: blur(1px); pointer-events: none; }
 .quota-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; position: relative; z-index: 1; }
@@ -85,21 +120,21 @@ a { color: var(--blue); }
 .quota-title { margin-top: 3px; font-size: 14px; font-weight: 700; }
 .quota-source { color: var(--muted); font: 10px var(--mono); white-space: nowrap; }
 .quota-windows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; margin-top: 14px; position: relative; z-index: 1; }
-.quota-window { padding: 12px; border: 1px solid rgba(139,148,158,.19); border-radius: 8px; background: rgba(13,17,23,.52); }
+.quota-window { padding: 12px; border: 1px solid rgba(139,148,158,.19); border-radius: 8px; background: var(--quota-surface); }
 .quota-window-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .quota-window-label { color: var(--text); font-size: 12px; font-weight: 650; }
 .quota-window-value { font: 750 18px var(--mono); }
 .quota-progress-track { height: 9px; margin-top: 9px; overflow: hidden; border-radius: 99px; background: rgba(139,148,158,.18); box-shadow: inset 0 1px 2px rgba(0,0,0,.35); }
 .quota-progress-fill { height: 100%; border-radius: inherit; transition: width .3s ease; }
-.quota-good .quota-window-value { color: #6ee787; }
+.quota-good .quota-window-value { color: var(--success-text); }
 .quota-good .quota-progress-fill { background: linear-gradient(90deg, #238636, #56d364); }
-.quota-warn .quota-window-value { color: #e3b341; }
+.quota-warn .quota-window-value { color: var(--warning-text); }
 .quota-warn .quota-progress-fill { background: linear-gradient(90deg, #9e6a03, #d29922); }
-.quota-critical .quota-window-value { color: #ff7b72; }
+.quota-critical .quota-window-value { color: var(--error-text); }
 .quota-critical .quota-progress-fill { background: linear-gradient(90deg, #b62324, #f85149); }
 .quota-reset { margin-top: 7px; color: var(--muted); font-size: 10px; }
 .quota-meta { margin-top: 10px; color: var(--muted); font-size: 10px; }
-.quota-fallback { margin-top: 11px; padding: 10px 11px; border-radius: 7px; color: #e3b341; background: rgba(210,153,34,.09); font-size: 11px; line-height: 1.5; }
+.quota-fallback { margin-top: 11px; padding: 10px 11px; border-radius: 7px; color: var(--warning-text); background: rgba(210,153,34,.09); font-size: 11px; line-height: 1.5; }
 .credential-actions { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
 .credential-actions button { padding: 6px 10px; font-size: 12px; }
 .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 99px; font-size: 11px; font-weight: 650; }
@@ -109,8 +144,10 @@ a { color: var(--blue); }
 .badge-disabled { color: var(--red); background: rgba(248,81,73,.12); }
 .badge-unknown { color: var(--muted); background: rgba(139,148,158,.12); }
 .test-result { margin-top: 10px; padding: 8px 10px; border-radius: 6px; font-size: 12px; }
-.test-result.ok { color: #aff5b4; background: rgba(63,185,80,.12); }
-.test-result.error { color: #ffb4ae; background: rgba(248,81,73,.12); }
+.test-result.ok { color: var(--success-text); background: rgba(63,185,80,.12); }
+.test-result.error { color: var(--error-text); background: rgba(248,81,73,.12); }
+.verification-result { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.verification-result button { flex-shrink: 0; }
 .empty { padding: 25px 10px; color: var(--muted); text-align: center; }
 .empty p { margin: 5px 0 0; font-size: 12px; }
 details summary { cursor: pointer; color: var(--text); font-weight: 650; }
@@ -123,7 +160,7 @@ th { padding: 8px 10px; color: var(--muted); border-bottom: 1px solid var(--bord
 td { padding: 10px; border-bottom: 1px solid var(--border); }
 tr:last-child td { border-bottom: 0; }
 .table-wrap { overflow-x: auto; }
-.modal-overlay { position: fixed; inset: 0; display: none; place-items: center; padding: 20px; background: rgba(0,0,0,.7); z-index: 10; }
+.modal-overlay { position: fixed; inset: 0; display: none; place-items: center; padding: 20px; background: var(--overlay); z-index: 10; }
 .modal-overlay.show { display: grid; }
 .modal { width: min(520px, 100%); max-height: 90vh; overflow-y: auto; padding: 22px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 20px 70px rgba(0,0,0,.4); }
 .modal h2 { margin: 0 0 5px; font-size: 18px; }
@@ -156,77 +193,85 @@ tr:last-child td { border-bottom: 0; }
 <body>
 <div id="loginView" class="login-wrap hidden">
   <form class="login-box" onsubmit="doLogin(event)">
-    <h1>hakimi-proxy</h1>
-    <p>输入 Bearer token 进入本地控制台。</p>
+    <h1>NA2H</h1>
+    <p data-zh="输入 Bearer token 进入本地控制台。" data-en="Enter your Bearer token to open the local console.">输入 Bearer token 进入本地控制台。</p>
     <input id="loginToken" type="password" autocomplete="current-password" placeholder="Bearer token">
-    <label class="remember-login"><input id="rememberLogin" type="checkbox">在此浏览器中保持登录</label>
-    <button class="btn-blue" type="submit" style="width:100%">登录</button>
+    <label class="remember-login"><input id="rememberLogin" type="checkbox"><span data-zh="在此浏览器中保持登录" data-en="Stay signed in on this browser">在此浏览器中保持登录</span></label>
+    <button class="btn-blue" type="submit" style="width:100%" data-zh="登录" data-en="Sign in">登录</button>
+    <div class="preferences login-preferences">
+      <label class="preference-control"><span data-zh="语言" data-en="Language">语言</span><select class="language-select" onchange="setLanguage(this.value)"><option value="zh-CN">简体中文</option><option value="en">English</option></select></label>
+      <label class="preference-control"><span data-zh="主题" data-en="Theme">主题</span><select class="theme-select" onchange="setTheme(this.value)"><option value="system" data-zh="跟随系统" data-en="System">跟随系统</option><option value="light" data-zh="浅色" data-en="Light">浅色</option><option value="dark" data-zh="深色" data-en="Dark">深色</option></select></label>
+    </div>
   </form>
 </div>
 
 <div id="appView" class="app hidden">
   <header class="topbar">
     <div>
-      <p class="eyebrow">HAKIMI PROXY</p>
-      <h1>控制台</h1>
-      <p class="subtitle">管理凭证池、检查连接，并查看代理用量。</p>
+      <p class="eyebrow">NA2H</p>
+      <h1 data-zh="控制台" data-en="Console">控制台</h1>
+      <p class="subtitle" data-zh="管理凭证池、检查连接，并查看代理用量。" data-en="Manage credentials, check connectivity, and review gateway usage.">管理凭证池、检查连接，并查看代理用量。</p>
       <p class="endpoint" id="endpoint">Endpoint: —</p>
     </div>
     <div class="top-actions">
-      <span class="service" id="serviceStatus"><span class="service-dot"></span><span>检查中</span></span>
-      <button class="btn-ghost" onclick="refreshAll()">刷新</button>
-      <button class="btn-ghost" onclick="logout()">退出</button>
+      <span class="service" id="serviceStatus"><span class="service-dot"></span><span data-zh="检查中" data-en="Checking">检查中</span></span>
+      <div class="preferences">
+        <label class="preference-control"><span data-zh="语言" data-en="Language">语言</span><select id="languageSelect" class="language-select" onchange="setLanguage(this.value)"><option value="zh-CN">简体中文</option><option value="en">English</option></select></label>
+        <label class="preference-control"><span data-zh="主题" data-en="Theme">主题</span><select id="themeSelect" class="theme-select" onchange="setTheme(this.value)"><option value="system" data-zh="跟随系统" data-en="System">跟随系统</option><option value="light" data-zh="浅色" data-en="Light">浅色</option><option value="dark" data-zh="深色" data-en="Dark">深色</option></select></label>
+      </div>
+      <button class="btn-ghost" onclick="refreshAll()" data-zh="刷新" data-en="Refresh">刷新</button>
+      <button class="btn-ghost" onclick="logout()" data-zh="退出" data-en="Sign out">退出</button>
     </div>
   </header>
 
   <section class="panel onboarding" id="onboarding" aria-live="polite">
-    <div id="onboardingContent"><h2>下一步</h2><p>正在检查本地设置…</p></div>
+    <div id="onboardingContent"><h2 data-zh="下一步" data-en="Next step">下一步</h2><p data-zh="正在检查本地设置…" data-en="Checking local configuration…">正在检查本地设置…</p></div>
   </section>
 
   <div class="stats" id="stats"></div>
 
   <section class="panel" id="credentials">
     <div class="panel-header">
-      <div><h2>凭证</h2><p>编辑时密钥不会回显；密钥输入框留空即可保持当前值。</p></div>
+      <div><h2 data-zh="凭证" data-en="Credentials">凭证</h2><p data-zh="编辑时密钥不会回显；密钥输入框留空即可保持当前值。" data-en="Secrets are never echoed while editing; leave a secret field blank to keep its current value.">编辑时密钥不会回显；密钥输入框留空即可保持当前值。</p></div>
       <div class="actions">
         <button class="btn-primary" onclick="openCredentialModal('aistudio')">+ AI Studio</button>
-        <button class="btn-blue" onclick="startAntigravityOAuth()">+ Antigravity 登录</button>
-        <button class="btn-ghost" onclick="openCredentialModal('antigravity')">手动配置</button>
-        <button class="btn-ghost" onclick="openCredentialMigrationModal()">凭证迁移</button>
+        <button class="btn-blue" onclick="startAntigravityOAuth()" data-zh="+ Antigravity 登录" data-en="+ Antigravity sign-in">+ Antigravity 登录</button>
+        <button class="btn-ghost" onclick="openCredentialModal('antigravity')" data-zh="手动配置" data-en="Manual setup">手动配置</button>
+        <button class="btn-ghost" onclick="openCredentialMigrationModal()" data-zh="凭证迁移" data-en="Credential migration">凭证迁移</button>
       </div>
     </div>
     <div class="provider-block">
-      <div class="provider-heading"><h3>AI Studio</h3><span id="aiCount">0 个凭证</span></div>
+      <div class="provider-heading"><h3>AI Studio</h3><span id="aiCount" data-zh="0 个凭证" data-en="0 credentials">0 个凭证</span></div>
       <div class="credential-list" id="aiCredentials"></div>
     </div>
     <div class="provider-block">
-      <div class="provider-heading"><h3>Antigravity</h3><span id="agCount">0 个账号</span></div>
+      <div class="provider-heading"><h3>Antigravity</h3><span id="agCount" data-zh="0 个账号" data-en="0 accounts">0 个账号</span></div>
       <div class="credential-list" id="agCredentials"></div>
     </div>
   </section>
 
   <section class="panel" id="usage">
-    <div class="panel-header"><div><h2>用量</h2><p>本地 token 计量和 API 等价成本估算；不是 Antigravity 实际账单。</p></div><button class="btn-ghost" onclick="loadUsage()">刷新用量</button></div>
+    <div class="panel-header"><div><h2 data-zh="用量" data-en="Usage">用量</h2><p data-zh="本地 token 计量和 API 等价成本估算；不是 Antigravity 实际账单。" data-en="Local token metering and API-equivalent cost estimates; not an Antigravity bill.">本地 token 计量和 API 等价成本估算；不是 Antigravity 实际账单。</p></div><button class="btn-ghost" onclick="loadUsage()" data-zh="刷新用量" data-en="Refresh usage">刷新用量</button></div>
     <div id="usageStats" class="stats"></div>
     <div class="table-wrap" id="usageTable"></div>
   </section>
 
   <section class="panel" id="settings">
     <details id="settingsDetails">
-      <summary>设置（部分变更需要重启）</summary>
+      <summary data-zh="设置（部分变更需要重启）" data-en="Settings (some changes require restart)">设置（部分变更需要重启）</summary>
       <div class="settings-grid">
         <div class="form-group"><label for="setHost">Host</label><input id="setHost"></div>
         <div class="form-group"><label for="setPort">Port</label><input id="setPort" type="number"></div>
-        <div class="form-group full"><label for="setAuth">Bearer token</label><input id="setAuth" type="password" autocomplete="new-password" placeholder="留空：保持现有密钥"></div>
-        <div class="form-group"><label for="setRetries">Max retries</label><input id="setRetries" type="number"></div>
-        <div class="form-group"><label for="setCooldown">Cooldown seconds</label><input id="setCooldown" type="number"></div>
-        <div class="form-group full"><label for="setDb">Database path</label><input id="setDb"></div>
-        <div class="form-group full"><label for="setProxy">Upstream proxy</label><input id="setProxy" placeholder="留空：自动检测环境/系统/GNOME 代理"></div>
-        <div class="form-group full"><label for="setProxySource">Proxy source</label><input id="setProxySource" readonly></div>
-        <div class="form-group full"><label for="setConfigFile">Config file</label><input id="setConfigFile" readonly></div>
-        <div class="form-group full"><label for="setDiagnostics">Diagnostic journal</label><input id="setDiagnostics" readonly></div>
+        <div class="form-group full"><label for="setAuth">Bearer token</label><input id="setAuth" type="password" autocomplete="new-password" placeholder="留空：保持现有密钥" data-placeholder-zh="留空：保持现有密钥" data-placeholder-en="Leave blank to keep the current secret"></div>
+        <div class="form-group"><label for="setRetries" data-zh="最大重试次数" data-en="Max retries">最大重试次数</label><input id="setRetries" type="number"></div>
+        <div class="form-group"><label for="setCooldown" data-zh="冷却秒数" data-en="Cooldown seconds">冷却秒数</label><input id="setCooldown" type="number"></div>
+        <div class="form-group full"><label for="setDb" data-zh="数据库路径" data-en="Database path">数据库路径</label><input id="setDb"></div>
+        <div class="form-group full"><label for="setProxy" data-zh="上游代理" data-en="Upstream proxy">上游代理</label><input id="setProxy" placeholder="留空：自动检测环境/系统/GNOME 代理" data-placeholder-zh="留空：自动检测环境/系统/GNOME 代理" data-placeholder-en="Leave blank to auto-detect environment, system, or GNOME proxy"></div>
+        <div class="form-group full"><label for="setProxySource" data-zh="代理来源" data-en="Proxy source">代理来源</label><input id="setProxySource" readonly></div>
+        <div class="form-group full"><label for="setConfigFile" data-zh="配置文件" data-en="Config file">配置文件</label><input id="setConfigFile" readonly></div>
+        <div class="form-group full"><label for="setDiagnostics" data-zh="诊断日志" data-en="Diagnostic journal">诊断日志</label><input id="setDiagnostics" readonly></div>
       </div>
-      <div class="form-actions"><button class="btn-primary" onclick="saveSettings()">保存设置</button></div>
+      <div class="form-actions"><button class="btn-primary" onclick="saveSettings()" data-zh="保存设置" data-en="Save settings">保存设置</button></div>
     </details>
   </section>
 </div>
@@ -237,7 +282,51 @@ tr:last-child td { border-bottom: 0; }
 <div class="toast" id="toast" role="status"></div>
 
 <script>
-const state = { credentials: { aistudio: [], antigravity: [] }, models: [], usage: null, health: null, busy: new Set(), tests: {} };
+function storedPreference(key, fallback) {
+  try { return localStorage.getItem(key) || fallback; }
+  catch (error) { return fallback; }
+}
+function savePreference(key, value) {
+  try { localStorage.setItem(key, value); }
+  catch (error) { /* Preferences remain active for this page load. */ }
+}
+const browserLanguage = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
+let language = storedPreference('na2h-language', browserLanguage);
+let theme = storedPreference('na2h-theme', 'system');
+function tr(chinese, english) { return language === 'en' ? english : chinese; }
+function applyTranslations() {
+  document.documentElement.lang = language;
+  document.querySelectorAll('[data-zh][data-en]').forEach(node => {
+    node.textContent = language === 'en' ? node.dataset.en : node.dataset.zh;
+  });
+  document.querySelectorAll('[data-placeholder-zh][data-placeholder-en]').forEach(node => {
+    node.placeholder = language === 'en' ? node.dataset.placeholderEn : node.dataset.placeholderZh;
+  });
+  document.querySelectorAll('.language-select').forEach(node => { node.value = language; });
+}
+function renderLocalizedState() {
+  if (!state.health || document.getElementById('appView').classList.contains('hidden')) return;
+  renderHealth(); renderCredentials(); renderUsage(); renderOnboarding();
+  if (state.config) renderSettingsCopy();
+}
+function setLanguage(value) {
+  language = ['zh-CN', 'en'].includes(value) ? value : 'zh-CN';
+  savePreference('na2h-language', language);
+  applyTranslations();
+  renderLocalizedState();
+}
+function setTheme(value) {
+  theme = ['system', 'light', 'dark'].includes(value) ? value : 'system';
+  savePreference('na2h-theme', theme);
+  document.documentElement.dataset.theme = theme;
+  document.querySelectorAll('.theme-select').forEach(node => { node.value = theme; });
+}
+function applyPreferences() {
+  setTheme(theme);
+  setLanguage(language);
+}
+
+const state = { credentials: { aistudio: [], antigravity: [] }, models: [], usage: null, health: null, config: null, busy: new Set(), tests: {}, verifications: {} };
 let token = sessionStorage.getItem('hakimi_token') || localStorage.getItem('hakimi_token') || '';
 let editingType = '';
 let editingId = '';
@@ -252,9 +341,9 @@ async function api(method, path, body) {
     options.body = JSON.stringify(body);
   }
   const response = await fetch(path, options);
-  if (response.status === 401) { showLogin(); throw new Error('Unauthorized'); }
+  if (response.status === 401) { showLogin(); const error = new Error(tr('未授权', 'Unauthorized')); error.code = 'unauthorized'; throw error; }
   const data = await response.json();
-  if (!response.ok) { const error = new Error(data.error?.message || 'Request failed'); error.data = data; throw error; }
+  if (!response.ok) { const error = new Error(data.error?.message || tr('请求失败', 'Request failed')); error.data = data; throw error; }
   return data;
 }
 
@@ -289,7 +378,7 @@ async function init() {
     setAppVisible(); await refreshAll();
   }
   catch (error) {
-    if (error.message === 'Unauthorized') return;
+    if (error.code === 'unauthorized') return;
     setAppVisible(); toast(error.message, 'error');
   }
 }
@@ -328,43 +417,43 @@ function renderOnboarding() {
   const active = Number(state.health?.active_credentials || 0);
   panel.classList.toggle('ready', active > 0);
   if (!total) {
-    content.innerHTML = `<h2>第 1 步：登录一个账号</h2><p>推荐使用 Antigravity 浏览器登录；无需手填 client ID、secret、refresh token 或 Project ID。</p><div class="actions"><button class="btn-blue" onclick="startAntigravityOAuth()">Antigravity 登录</button><button class="btn-ghost" onclick="openCredentialModal('aistudio')">添加 AI Studio key</button></div>`;
+    content.innerHTML = `<h2>${tr('第 1 步：登录一个账号', 'Step 1: Sign in to an account')}</h2><p>${tr('推荐使用 Antigravity 浏览器登录；无需手填 client ID、secret、refresh token 或 Project ID。', 'Antigravity browser sign-in is recommended; no manual client ID, secret, refresh token, or Project ID is required.')}</p><div class="actions"><button class="btn-blue" onclick="startAntigravityOAuth()">${tr('Antigravity 登录', 'Antigravity sign-in')}</button><button class="btn-ghost" onclick="openCredentialModal('aistudio')">${tr('添加 AI Studio key', 'Add AI Studio key')}</button></div>`;
     return;
   }
   if (!active) {
-    content.innerHTML = `<h2>凭证尚不可调度</h2><p>账号已保存，但当前没有可用凭证。请在下方凭证卡片运行“检查”，按失败阶段重新登录或等待冷却结束。</p><div class="actions"><button class="btn-ghost" onclick="document.getElementById('credentials').scrollIntoView({behavior:'smooth'})">查看凭证状态</button></div>`;
+    content.innerHTML = `<h2>${tr('凭证尚不可调度', 'No credentials are schedulable')}</h2><p>${tr('账号已保存，但当前没有可用凭证。请在下方凭证卡片运行“检查”，按失败阶段重新登录或等待冷却结束。', 'Accounts are saved, but none are currently available. Run Check on a credential card, then sign in again or wait for cooldown based on the failed stage.')}</p><div class="actions"><button class="btn-ghost" onclick="document.getElementById('credentials').scrollIntoView({behavior:'smooth'})">${tr('查看凭证状态', 'View credential status')}</button></div>`;
     return;
   }
   const config = integrationConfig('');
   const authEnabled = Boolean(state.health?.auth_enabled);
   const authNote = authEnabled
-    ? '登录密钥同时也是客户端 API key；页面不显示它，仅在点击复制时写入剪贴板。'
-    : '当前未启用 Bearer 鉴权，仅适合本机回环使用；客户端 API key 可暂填任意非空值。暴露到局域网或服务器前请先设置 token 并重启。';
-  const authAction = authEnabled ? '' : '<button class="btn-ghost" onclick="openSettings()">设置 Bearer token</button>';
-  content.innerHTML = `<h2>已可接入${authEnabled ? '' : '（未启用鉴权）'}</h2><p>NA2H 已准备好作为 OpenAI-compatible provider。${authNote}</p><div class="integration-grid"><div class="integration-item"><span>Base URL</span><code>${esc(config.base_url)}</code></div><div class="integration-item"><span>Model</span><code>${esc(config.model)}</code></div></div><div class="actions"><button class="btn-primary" onclick="copyIntegrationConfig()">复制通用配置</button>${authAction}<button class="btn-ghost" onclick="document.getElementById('credentials').scrollIntoView({behavior:'smooth'})">检查账号</button></div>`;
+    ? tr('登录密钥同时也是客户端 API key；页面不显示它，仅在点击复制时写入剪贴板。', 'The sign-in secret is also the client API key. It is never displayed and is written to the clipboard only when you click Copy.')
+    : tr('当前未启用 Bearer 鉴权，仅适合本机回环使用；客户端 API key 可暂填任意非空值。暴露到局域网或服务器前请先设置 token 并重启。', 'Bearer authentication is disabled, which is suitable only for local loopback use. Use any non-empty client API key for now; set a token and restart before exposing NA2H to a LAN or server.');
+  const authAction = authEnabled ? '' : `<button class="btn-ghost" onclick="openSettings()">${tr('设置 Bearer token', 'Set Bearer token')}</button>`;
+  content.innerHTML = `<h2>${tr('已可接入', 'Ready to connect')}${authEnabled ? '' : tr('（未启用鉴权）', ' (authentication disabled)')}</h2><p>${tr('NA2H 已准备好作为 OpenAI-compatible provider。', 'NA2H is ready to use as an OpenAI-compatible provider.')} ${authNote}</p><div class="integration-grid"><div class="integration-item"><span>Base URL</span><code>${esc(config.base_url)}</code></div><div class="integration-item"><span>Model</span><code>${esc(config.model)}</code></div></div><div class="actions"><button class="btn-primary" onclick="copyIntegrationConfig()">${tr('复制通用配置', 'Copy generic config')}</button>${authAction}<button class="btn-ghost" onclick="document.getElementById('credentials').scrollIntoView({behavior:'smooth'})">${tr('检查账号', 'Check accounts')}</button></div>`;
 }
 async function copyIntegrationConfig() {
   try {
     const apiKey = state.health?.auth_enabled ? token : '<ANY_NON_EMPTY_VALUE>';
     if (state.health?.auth_enabled && !apiKey) { showLogin(); return; }
     await navigator.clipboard.writeText(JSON.stringify(integrationConfig(apiKey), null, 2));
-    toast('通用配置已复制，包含敏感 API key，请勿分享', 'success');
-  } catch (error) { toast('复制失败，请手动复制 Base URL 和模型', 'error'); }
+    toast(tr('通用配置已复制，包含敏感 API key，请勿分享', 'Generic config copied. It contains a sensitive API key; do not share it.'), 'success');
+  } catch (error) { toast(tr('复制失败，请手动复制 Base URL 和模型', 'Copy failed. Copy the Base URL and model manually.'), 'error'); }
 }
 function renderHealth() {
   const health = state.health || {};
   const status = document.getElementById('serviceStatus');
   status.className = 'service online';
-  status.innerHTML = `<span class="service-dot"></span><span>在线 · ${health.active_credentials || 0}/${health.total_credentials || 0} active · proxy ${esc(health.proxy_source || 'unknown')}</span>`;
+  status.innerHTML = `<span class="service-dot"></span><span>${tr('在线', 'Online')} · ${health.active_credentials || 0}/${health.total_credentials || 0} ${tr('可调度', 'active')} · ${tr('代理', 'proxy')} ${esc(health.proxy_source || 'unknown')}</span>`;
   const usage = state.usage || {};
   const totalTokens = (usage.total_input_tokens || 0) + (usage.total_cache_read_tokens || 0)
     + (usage.total_cache_write_tokens || 0) + (usage.total_output_tokens || 0)
     + (usage.total_reasoning_tokens || 0);
   document.getElementById('stats').innerHTML = [
-    ['Active credentials', `${health.active_credentials || 0}/${health.total_credentials || 0}`, '当前可调度'],
-    ['Requests', formatNum(usage.total_requests), '全部本地计量'],
-    ['Tokens', formatNum(totalTokens), `${formatNum(usage.total_input_tokens)} input / ${formatNum(usage.total_cache_read_tokens)} cached / ${formatNum(usage.total_reasoning_tokens)} reasoning`],
-    ['API 等价成本', formatUsd(usage.total_cost_usd), '估算值 · 非 AGY 账单'],
+    [tr('可调度凭证', 'Active credentials'), `${health.active_credentials || 0}/${health.total_credentials || 0}`, tr('当前可调度', 'Currently schedulable')],
+    [tr('请求数', 'Requests'), formatNum(usage.total_requests), tr('全部本地计量', 'All local metering')],
+    [tr('Token 数', 'Tokens'), formatNum(totalTokens), `${formatNum(usage.total_input_tokens)} ${tr('输入', 'input')} / ${formatNum(usage.total_cache_read_tokens)} ${tr('缓存', 'cached')} / ${formatNum(usage.total_reasoning_tokens)} ${tr('推理', 'reasoning')}`],
+    [tr('API 等价成本', 'API-equivalent cost'), formatUsd(usage.total_cost_usd), tr('估算值 · 非 AGY 账单', 'Estimate · not an AGY bill')],
   ].map(item => `<div class="stat"><div class="stat-label">${item[0]}</div><div class="stat-value">${item[1]}</div><div class="stat-sub">${item[2]}</div></div>`).join('');
 }
 
@@ -378,36 +467,38 @@ async function loadCredentials() {
 function renderCredentials() {
   const ai = state.credentials.aistudio || [];
   const ag = state.credentials.antigravity || [];
-  document.getElementById('aiCount').textContent = `${ai.length} 个凭证`;
-  document.getElementById('agCount').textContent = `${ag.length} 个账号`;
+  document.getElementById('aiCount').textContent = language === 'en' ? `${ai.length} credentials` : `${ai.length} 个凭证`;
+  document.getElementById('agCount').textContent = language === 'en' ? `${ag.length} accounts` : `${ag.length} 个账号`;
   document.getElementById('aiCredentials').innerHTML = renderCredentialList('aistudio', ai);
   document.getElementById('agCredentials').innerHTML = renderCredentialList('antigravity', ag);
 }
 function renderCredentialList(kind, credentials) {
   if (!credentials.length) {
-    const label = kind === 'aistudio' ? 'AI Studio API key' : 'Antigravity OAuth 账号';
-    return `<div class="empty">还没有${label}。<p>点击右上角按钮添加。</p></div>`;
+    const label = kind === 'aistudio' ? 'AI Studio API key' : tr('Antigravity OAuth 账号', 'Antigravity OAuth account');
+    return `<div class="empty">${tr(`还没有${label}。`, `No ${label} yet.`)}<p>${tr('点击右上角按钮添加。', 'Use the buttons above to add one.')}</p></div>`;
   }
   return credentials.map(credential => {
     const key = `${kind}:${credential.id}`;
     const quotaKey = `quota:${credential.id}`;
+    const verifyKey = `verify:${credential.id}`;
     const result = state.tests[key];
+    const verification = state.verifications[credential.id];
     const tokenExpiry = kind === 'antigravity'
-      ? (credential.access_token_expires_at ? `access token 至 ${new Date(credential.access_token_expires_at * 1000).toLocaleString()}` : 'access token 按需刷新')
+      ? (credential.access_token_expires_at ? `access token ${tr('有效至', 'expires')} ${new Date(credential.access_token_expires_at * 1000).toLocaleString(language)}` : tr('access token 按需刷新', 'access token refreshes on demand'))
       : '';
     const detail = kind === 'aistudio'
-      ? [credential.api_key_set ? 'API key 已设置' : 'API key 缺失', credential.account, credential.project]
-      : [credential.account || credential.client_id, credential.client_secret_set ? 'client secret 已设置' : 'client secret 缺失', credential.refresh_token_set ? 'refresh token 已设置' : 'refresh token 缺失', tokenExpiry, credential.project];
+      ? [credential.api_key_set ? tr('API key 已设置', 'API key set') : tr('API key 缺失', 'API key missing'), credential.account, credential.project]
+      : [credential.account || credential.client_id, credential.client_secret_set ? tr('client secret 已设置', 'client secret set') : tr('client secret 缺失', 'client secret missing'), credential.refresh_token_set ? tr('refresh token 已设置', 'refresh token set') : tr('refresh token 缺失', 'refresh token missing'), tokenExpiry, credential.project];
     const runtime = [
-      credential.in_flight ? `${credential.in_flight} 个请求处理中` : '空闲',
-      `健康：${healthLabel(credential.health)}`,
-      credential.cooldown_remaining ? `冷却 ${credential.cooldown_remaining}s` : '',
+      credential.in_flight ? tr(`${credential.in_flight} 个请求处理中`, `${credential.in_flight} requests in flight`) : tr('空闲', 'Idle'),
+      `${tr('健康：', 'Health: ')}${healthLabel(credential.health)}`,
+      credential.cooldown_remaining ? `${tr('冷却', 'Cooldown')} ${credential.cooldown_remaining}s` : '',
       credential.last_latency_ms ? `${credential.last_latency_ms} ms` : '',
-      credential.last_model ? `模型 ${credential.last_model}` : '',
-      credential.last_tested_at ? `检查：${credential.last_test_ok ? '通过' : '失败'}（${relativeAge(credential.last_tested_at)}）` : '未检查',
+      credential.last_model ? `${tr('模型', 'Model')} ${credential.last_model}` : '',
+      credential.last_tested_at ? `${tr('检查：', 'Check: ')}${credential.last_test_ok ? tr('通过', 'passed') : tr('失败', 'failed')}${language === 'en' ? ` (${relativeAge(credential.last_tested_at)})` : `（${relativeAge(credential.last_tested_at)}）`}` : tr('未检查', 'Not checked'),
     ].filter(Boolean).map(esc).join(' · ');
     const lastError = credential.last_error_type
-      ? `<div class="runtime-error">最近错误：${esc(credential.last_error_type)}${credential.last_error_message ? ` · ${esc(credential.last_error_message)}` : ''}</div>`
+      ? `<div class="runtime-error">${tr('最近错误：', 'Latest error: ')}${esc(credential.last_error_type)}${credential.last_error_message ? ` · ${esc(credential.last_error_message)}` : ''}</div>`
       : '';
     const quota = kind === 'antigravity' ? renderQuotaSnapshot(credential.quota) : '';
     return `<article class="credential-card">
@@ -415,36 +506,38 @@ function renderCredentialList(kind, credentials) {
         <div><div class="credential-name">${esc(credential.id)}</div><div class="credential-meta">${detail.filter(Boolean).map(esc).map(value => `<span>${value}</span>`).join('')}</div></div>
         <div class="credential-actions">
           ${stateBadge(credential.state)}
-          <button class="btn-ghost" ${state.busy.has(key) ? 'disabled' : ''} onclick="testCredential('${kind}','${arg(credential.id)}')">${state.busy.has(key) ? '检查中…' : '检查'}</button>
-          ${kind === 'antigravity' ? `<button class="btn-ghost" ${state.busy.has(quotaKey) ? 'disabled' : ''} onclick="refreshAntigravityQuota('${arg(credential.id)}')">${state.busy.has(quotaKey) ? '刷新中…' : '刷新额度'}</button>` : ''}
-          <button class="btn-ghost" onclick="openCredentialModal('${kind}','${arg(credential.id)}')">Edit</button>
-          <button class="btn-danger" onclick="deleteCredential('${kind}','${arg(credential.id)}')">Delete</button>
+          <button class="btn-ghost" ${state.busy.has(key) ? 'disabled' : ''} onclick="testCredential('${kind}','${arg(credential.id)}')">${state.busy.has(key) ? tr('检查中…', 'Checking…') : tr('检查', 'Check')}</button>
+          ${kind === 'antigravity' ? `<button class="btn-ghost" ${state.busy.has(quotaKey) ? 'disabled' : ''} onclick="refreshAntigravityQuota('${arg(credential.id)}')">${state.busy.has(quotaKey) ? tr('刷新中…', 'Refreshing…') : tr('刷新额度', 'Refresh quota')}</button>` : ''}
+          ${kind === 'antigravity' ? `<button class="btn-blue" ${state.busy.has(verifyKey) ? 'disabled' : ''} onclick="verifyCredential('${arg(credential.id)}')">${state.busy.has(verifyKey) ? tr('自检中…', 'Verifying…') : tr('完整自检', 'Full verification')}</button>` : ''}
+          <button class="btn-ghost" onclick="openCredentialModal('${kind}','${arg(credential.id)}')">${tr('编辑', 'Edit')}</button>
+          <button class="btn-danger" onclick="deleteCredential('${kind}','${arg(credential.id)}')">${tr('删除', 'Delete')}</button>
         </div>
       </div>
       <div class="credential-runtime">${runtime}${lastError}</div>
       ${quota}
-      ${result ? `<div class="test-result ${result.ok ? 'ok' : 'error'}">${esc(result.message)}</div>` : ''}
+      ${result ? `<div class="test-result ${result.ok ? 'ok' : 'error'}">${esc(testResultMessage(result))}</div>` : ''}
+      ${verification ? `<div class="test-result ${verification.ok ? 'ok' : 'error'} verification-result"><span>${esc(verificationResultMessage(verification))}</span>${verification.report ? `<button class="btn-ghost" onclick="downloadVerificationReport('${arg(credential.id)}')">${tr('下载脱敏报告', 'Download redacted report')}</button>` : ''}</div>` : ''}
     </article>`;
   }).join('');
 }
 function renderQuotaSnapshot(quota) {
-  if (!quota) return '<div class="quota-panel"><div class="quota-meta">尚未获取 AGY 额度；点击“刷新额度”主动查询。</div></div>';
-  const updated = quota.fetched_at ? relativeAge(quota.fetched_at) : '未知';
+  if (!quota) return `<div class="quota-panel"><div class="quota-meta">${tr('尚未获取 AGY 额度；点击“刷新额度”主动查询。', 'AGY quota has not been fetched. Click Refresh quota to query it explicitly.')}</div></div>`;
+  const updated = quota.fetched_at ? relativeAge(quota.fetched_at) : tr('未知', 'Unknown');
   const source = esc(quota.source || 'unknown');
   const group = (quota.groups || []).find(item => item.kind === 'gemini');
   if (quota.mode !== 'grouped' || !group) {
     const modelCount = (quota.models || []).length;
-    return `<div class="quota-panel"><div class="quota-panel-head"><div><div class="quota-kicker">Gemini shared pool</div><div class="quota-title">共享额度暂不可用</div></div><div class="quota-source">${source} · ${esc(updated)}</div></div><div class="quota-fallback">Google 未返回完整的 5h / 7d 共享额度。${modelCount ? `已检测到 ${modelCount} 个可用 Gemini 模型，但不会把逐模型数据伪装成独立额度池。` : '当前仅能确认账号连接状态。'}</div></div>`;
+    return `<div class="quota-panel"><div class="quota-panel-head"><div><div class="quota-kicker">${tr('Gemini 共享池', 'Gemini shared pool')}</div><div class="quota-title">${tr('共享额度暂不可用', 'Shared quota unavailable')}</div></div><div class="quota-source">${source} · ${esc(updated)}</div></div><div class="quota-fallback">${tr('Google 未返回完整的 5h / 7d 共享额度。', 'Google did not return complete 5h / 7d shared quota data.')}${modelCount ? tr(`已检测到 ${modelCount} 个可用 Gemini 模型，但不会把逐模型数据伪装成独立额度池。`, `${modelCount} available Gemini models were detected, but per-model data is not presented as independent quota pools.`) : tr('当前仅能确认账号连接状态。', 'Only account connectivity can currently be confirmed.')}</div></div>`;
   }
   const buckets = [...(group.buckets || [])].sort((a, b) => quotaWindowRank(a) - quotaWindowRank(b));
   const windows = buckets.map(bucket => {
     const percent = Math.max(0, Math.min(100, Number(bucket.remaining_percent) || 0));
     const label = quotaWindowLabel(bucket);
     const tone = percent >= 70 ? 'quota-good' : percent >= 30 ? 'quota-warn' : 'quota-critical';
-    const reset = bucket.reset_time ? `重置于 ${formatTimestamp(bucket.reset_time)}` : '重置时间未知';
-    return `<div class="quota-window ${tone}"><div class="quota-window-head"><span class="quota-window-label">${esc(label)}</span><span class="quota-window-value">${percent}%</span></div><div class="quota-progress-track" role="progressbar" aria-label="${esc(label)} 剩余额度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><div class="quota-progress-fill" style="width:${percent}%"></div></div><div class="quota-reset">${esc(reset)}</div></div>`;
+    const reset = bucket.reset_time ? `${tr('重置于', 'Resets')} ${formatTimestamp(bucket.reset_time)}` : tr('重置时间未知', 'Reset time unknown');
+    return `<div class="quota-window ${tone}"><div class="quota-window-head"><span class="quota-window-label">${esc(label)}</span><span class="quota-window-value">${percent}%</span></div><div class="quota-progress-track" role="progressbar" aria-label="${esc(label)} ${tr('剩余额度', 'quota remaining')}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><div class="quota-progress-fill" style="width:${percent}%"></div></div><div class="quota-reset">${esc(reset)}</div></div>`;
   }).join('');
-  return `<div class="quota-panel"><div class="quota-panel-head"><div><div class="quota-kicker">Gemini shared pool</div><div class="quota-title">${esc(group.display_name || 'Gemini Models')}</div></div><div class="quota-source">${source} · ${esc(updated)}</div></div><div class="quota-windows">${windows || '<div class="quota-fallback">上游没有返回可展示的共享额度窗口。</div>'}</div><div class="quota-meta">Google 上游报告值 · 共享池余量，不代表单个模型拥有独立配额。</div></div>`;
+  return `<div class="quota-panel"><div class="quota-panel-head"><div><div class="quota-kicker">${tr('Gemini 共享池', 'Gemini shared pool')}</div><div class="quota-title">${esc(group.display_name || 'Gemini Models')}</div></div><div class="quota-source">${source} · ${esc(updated)}</div></div><div class="quota-windows">${windows || `<div class="quota-fallback">${tr('上游没有返回可展示的共享额度窗口。', 'The upstream service returned no displayable shared quota windows.')}</div>`}</div><div class="quota-meta">${tr('Google 上游报告值 · 共享池余量，不代表单个模型拥有独立配额。', 'Values reported by Google upstream · shared-pool remaining quota, not independent per-model quotas.')}</div></div>`;
 }
 function quotaWindowText(bucket) {
   return `${bucket.bucket_id || ''} ${bucket.window || ''} ${bucket.display_name || ''}`.toLowerCase();
@@ -463,21 +556,46 @@ function quotaWindowLabel(bucket) {
 }
 function formatTimestamp(value) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString(language);
 }
 function healthLabel(name) {
-  return { healthy: '正常', degraded: '降级', cooldown: '冷却', reauth_required: '需重新授权', disabled: '已禁用', unknown: '未知' }[name] || name || '未知';
+  const labels = language === 'en'
+    ? { healthy: 'Healthy', degraded: 'Degraded', cooldown: 'Cooldown', reauth_required: 'Sign-in required', disabled: 'Disabled', unknown: 'Unknown' }
+    : { healthy: '正常', degraded: '降级', cooldown: '冷却', reauth_required: '需重新授权', disabled: '已禁用', unknown: '未知' };
+  return labels[name] || name || labels.unknown;
 }
 function relativeAge(timestamp) {
   const seconds = Math.max(0, Math.round(Date.now() / 1000 - Number(timestamp)));
-  if (seconds < 60) return `${seconds}s 前`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m 前`;
-  return `${Math.round(seconds / 3600)}h 前`;
+  if (seconds < 60) return language === 'en' ? `${seconds}s ago` : `${seconds}s 前`;
+  if (seconds < 3600) return language === 'en' ? `${Math.round(seconds / 60)}m ago` : `${Math.round(seconds / 60)}m 前`;
+  return language === 'en' ? `${Math.round(seconds / 3600)}h ago` : `${Math.round(seconds / 3600)}h 前`;
 }
 function stateBadge(stateName) {
-  const map = { active: ['badge-active', '可调度'], cooldown: ['badge-cooldown', '冷却中'], disabled: ['badge-disabled', '已禁用'] };
-  const [className, label] = map[stateName] || ['badge-unknown', stateName || '未知'];
+  const map = language === 'en'
+    ? { active: ['badge-active', 'Active'], cooldown: ['badge-cooldown', 'Cooldown'], disabled: ['badge-disabled', 'Disabled'] }
+    : { active: ['badge-active', '可调度'], cooldown: ['badge-cooldown', '冷却中'], disabled: ['badge-disabled', '已禁用'] };
+  const [className, label] = map[stateName] || ['badge-unknown', stateName || tr('未知', 'Unknown')];
   return `<span class="badge ${className}">${esc(label)}</span>`;
+}
+function stageLabel(name) {
+  const labels = language === 'en'
+    ? { local: 'Local', oauth: 'OAuth', control_plane: 'Control plane', quota: 'Quota', inference: 'Inference', responses_nonstream: 'Non-stream response', responses_stream: 'Streamed tool call', agent_replay: 'Agent replay' }
+    : { local: '本地', oauth: 'OAuth', control_plane: '控制面', quota: '额度', inference: '推理', responses_nonstream: '非流式响应', responses_stream: '流式工具调用', agent_replay: 'Agent 回放' };
+  return labels[name] || name;
+}
+function testResultMessage(result) {
+  if (result.ok) {
+    const stages = (result.stages || []).map(stageLabel).join(' → ');
+    return `${tr('检查通过', 'Check passed')} · ${stages || result.model || ''} · ${result.latency} ms`;
+  }
+  const failedStage = result.failedStage ? (language === 'en' ? ` (${stageLabel(result.failedStage)})` : `（${stageLabel(result.failedStage)}）`) : '';
+  return `${tr('检查失败', 'Check failed')}${failedStage} · ${result.errorMessage}`;
+}
+function verificationResultMessage(result) {
+  if (result.ok) return `${tr('完整自检通过', 'Full verification passed')} · ${tr('3 次推理', '3 inference requests')} · ${result.durationMs || 0} ms`;
+  if (result.errorMessage) return `${tr('完整自检失败', 'Full verification failed')} · ${result.errorMessage}`;
+  const failed = (result.failedStages || []).map(stageLabel).join(language === 'en' ? ', ' : '、');
+  return `${tr('完整自检未通过', 'Full verification did not pass')}${failed ? ` · ${failed}` : ''}`;
 }
 
 async function startAntigravityOAuth() {
@@ -488,22 +606,22 @@ async function startAntigravityOAuth() {
     oauthSession = session;
     openAntigravityOAuthModal(session);
     const popup = window.open(session.authorization_url, '_blank', 'noopener,noreferrer');
-    if (!popup) oauthStatus('浏览器阻止了新窗口；请点击“打开授权链接”或复制到任意 Chrome。');
-    else if (session.mode === 'local') oauthStatus('已打开 Google 登录页；本机回调成功后会自动完成。');
-    else oauthStatus('已打开 Google 登录页；完成后请粘贴地址栏里的回调 URL。');
+    if (!popup) oauthStatus(tr('浏览器阻止了新窗口；请点击“打开授权链接”或复制到任意 Chrome。', 'The browser blocked the new window. Click Open authorization link or copy it into any Chrome browser.'));
+    else if (session.mode === 'local') oauthStatus(tr('已打开 Google 登录页；本机回调成功后会自动完成。', 'The Google sign-in page is open. A successful local callback will complete automatically.'));
+    else oauthStatus(tr('已打开 Google 登录页；完成后请粘贴地址栏里的回调 URL。', 'The Google sign-in page is open. When finished, paste the callback URL from the address bar.'));
     if (session.mode === 'local') pollAntigravityOAuth(session);
   } catch (error) { toast(error.message, 'error'); }
 }
 
 function openAntigravityOAuthModal(session) {
   const remote = session.mode === 'remote';
-  document.getElementById('modalContent').innerHTML = `<h2 id="modalTitle">Antigravity 登录</h2>
-    <p class="modal-note">${remote ? '请在任意 Chrome 完成登录；跳转 localhost 后即使连接失败，也要复制地址栏完整 URL 并粘贴回来。' : '完成 Google 登录后会自动回填；如果没有自动完成，也可以粘贴浏览器地址栏里的完整回调 URL。'}</p>
-    <div class="form-group"><label for="oauthUrl">授权链接</label><textarea id="oauthUrl" readonly>${esc(session.authorization_url)}</textarea><div class="secret-note">回调地址：${esc(session.redirect_uri || 'http://localhost:51121/oauth-callback')}</div></div>
-    <div class="form-actions"><button class="btn-ghost" onclick="copyOAuthUrl()">复制链接</button><button class="btn-ghost" onclick="openOAuthUrl()">打开授权链接</button></div>
-    <div class="form-group"><label for="oauthResult">授权结果（完整回调 URL 或 OAuth code）</label><textarea id="oauthResult" placeholder="${esc(session.redirect_uri || 'http://localhost:51121/oauth-callback')}?code=...&state=..."></textarea></div>
-    <div class="modal-status" id="oauthStatus" role="alert">等待 Google 授权…</div>
-    <div class="form-actions"><button class="btn-ghost" onclick="closeModal()">取消</button><button class="btn-blue" id="oauthComplete" onclick="submitAntigravityOAuth()">完成登录</button></div>`;
+  document.getElementById('modalContent').innerHTML = `<h2 id="modalTitle">${tr('Antigravity 登录', 'Antigravity sign-in')}</h2>
+    <p class="modal-note">${remote ? tr('请在任意 Chrome 完成登录；跳转 localhost 后即使连接失败，也要复制地址栏完整 URL 并粘贴回来。', 'Complete sign-in in any Chrome browser. After the localhost redirect, copy the complete address-bar URL and paste it here even if the page cannot connect.') : tr('完成 Google 登录后会自动回填；如果没有自动完成，也可以粘贴浏览器地址栏里的完整回调 URL。', 'Google sign-in completes automatically. If it does not, paste the complete callback URL from the browser address bar.')}</p>
+    <div class="form-group"><label for="oauthUrl">${tr('授权链接', 'Authorization link')}</label><textarea id="oauthUrl" readonly>${esc(session.authorization_url)}</textarea><div class="secret-note">${tr('回调地址：', 'Callback URL: ')}${esc(session.redirect_uri || 'http://localhost:51121/oauth-callback')}</div></div>
+    <div class="form-actions"><button class="btn-ghost" onclick="copyOAuthUrl()">${tr('复制链接', 'Copy link')}</button><button class="btn-ghost" onclick="openOAuthUrl()">${tr('打开授权链接', 'Open authorization link')}</button></div>
+    <div class="form-group"><label for="oauthResult">${tr('授权结果（完整回调 URL 或 OAuth code）', 'Authorization result (complete callback URL or OAuth code)')}</label><textarea id="oauthResult" placeholder="${esc(session.redirect_uri || 'http://localhost:51121/oauth-callback')}?code=...&state=..."></textarea></div>
+    <div class="modal-status" id="oauthStatus" role="alert">${tr('等待 Google 授权…', 'Waiting for Google authorization…')}</div>
+    <div class="form-actions"><button class="btn-ghost" onclick="closeModal()">${tr('取消', 'Cancel')}</button><button class="btn-blue" id="oauthComplete" onclick="submitAntigravityOAuth()">${tr('完成登录', 'Complete sign-in')}</button></div>`;
   document.getElementById('modalOverlay').classList.add('show');
   document.getElementById('oauthResult').focus();
 }
@@ -516,18 +634,18 @@ function oauthStatus(message) {
 async function copyOAuthUrl() {
   try {
     await navigator.clipboard.writeText(oauthSession.authorization_url);
-    oauthStatus('授权链接已复制。');
-  } catch (error) { oauthStatus('复制失败，请手动选择并复制授权链接。'); }
+    oauthStatus(tr('授权链接已复制。', 'Authorization link copied.'));
+  } catch (error) { oauthStatus(tr('复制失败，请手动选择并复制授权链接。', 'Copy failed. Select and copy the authorization link manually.')); }
 }
 
 function openOAuthUrl() { window.open(oauthSession.authorization_url, '_blank', 'noopener,noreferrer'); }
 
 async function submitAntigravityOAuth() {
   const result = value('oauthResult');
-  if (!result) { oauthStatus('请粘贴完整回调 URL 或 OAuth code。'); return; }
+  if (!result) { oauthStatus(tr('请粘贴完整回调 URL 或 OAuth code。', 'Paste the complete callback URL or OAuth code.')); return; }
   const button = document.getElementById('oauthComplete');
   button.disabled = true;
-  oauthStatus('正在交换 OAuth token…');
+  oauthStatus(tr('正在交换 OAuth token…', 'Exchanging OAuth token…'));
   try {
     const payload = result.startsWith('http://') || result.startsWith('https://')
       ? { state: oauthSession.state, callback_url: result }
@@ -536,10 +654,10 @@ async function submitAntigravityOAuth() {
     if (response.status === 'ok') {
       oauthSession.completed = true;
       closeModal();
-      toast(`Antigravity 登录成功 · ${response.account || response.credential_id}`, 'success');
+      toast(`${tr('Antigravity 登录成功', 'Antigravity sign-in succeeded')} · ${response.account || response.credential_id}`, 'success');
       await loadCredentials();
-    } else if (response.status === 'error') { oauthSession.completed = true; oauthStatus(response.message || 'OAuth 登录失败。'); }
-    else oauthStatus('服务器仍在处理，请稍候。');
+    } else if (response.status === 'error') { oauthSession.completed = true; oauthStatus(response.message || tr('OAuth 登录失败。', 'OAuth sign-in failed.')); }
+    else oauthStatus(tr('服务器仍在处理，请稍候。', 'The server is still processing. Please wait.'));
   } catch (error) { oauthStatus(error.message); }
   finally { button.disabled = false; }
 }
@@ -556,31 +674,31 @@ async function pollAntigravityOAuth(session) {
         if (result.status === 'ok') {
           session.completed = true;
           closeModal();
-          toast(`Antigravity 登录成功 · ${result.account || result.credential_id}`, 'success');
+          toast(`${tr('Antigravity 登录成功', 'Antigravity sign-in succeeded')} · ${result.account || result.credential_id}`, 'success');
           await loadCredentials();
           return;
         }
-        if (result.status === 'error') { session.completed = true; oauthStatus(result.message || 'OAuth 登录失败。'); return; }
-        if (result.status === 'processing') oauthStatus('服务器正在交换 OAuth token…');
+        if (result.status === 'error') { session.completed = true; oauthStatus(result.message || tr('OAuth 登录失败。', 'OAuth sign-in failed.')); return; }
+        if (result.status === 'processing') oauthStatus(tr('服务器正在交换 OAuth token…', 'The server is exchanging the OAuth token…'));
       } catch (error) { oauthStatus(error.message); return; }
     }
-    oauthStatus('OAuth 登录超时，请重新开始。');
+    oauthStatus(tr('OAuth 登录超时，请重新开始。', 'OAuth sign-in timed out. Start again.'));
 }
 
 function openCredentialMigrationModal() {
   pendingCredentialBundle = null;
-  document.getElementById('modalContent').innerHTML = `<h2 id="modalTitle">凭证迁移</h2>
-    <p class="modal-note">备份包含 API key、client secret 和 refresh token，属于敏感文件。不会包含短期 access token、代理、Bearer token 或用量数据库；请妥善保管。</p>
-    <div class="form-actions"><button class="btn-blue" onclick="exportCredentials()">导出敏感备份</button></div>
-    <div class="form-group"><label for="credentialImportFile">恢复备份</label><input id="credentialImportFile" type="file" accept="application/json,.json" onchange="previewCredentialImport(event)"><div class="secret-note">选择文件后先预览新增项和 ID 冲突，不会立即写入。</div></div>
-    <div id="credentialImportPreview" class="modal-status" role="status">尚未选择备份文件。</div>
-    <div class="form-group"><label for="credentialConflict">ID 冲突处理</label><select id="credentialConflict"><option value="skip">保留当前凭证（推荐）</option><option value="overwrite">使用备份覆盖</option></select></div>
-    <div class="form-actions"><button class="btn-ghost" onclick="closeModal()">关闭</button><button class="btn-primary" id="credentialImportApply" onclick="applyCredentialImport()" disabled>确认恢复</button></div>`;
+  document.getElementById('modalContent').innerHTML = `<h2 id="modalTitle">${tr('凭证迁移', 'Credential migration')}</h2>
+    <p class="modal-note">${tr('备份包含 API key、client secret 和 refresh token，属于敏感文件。不会包含短期 access token、代理、Bearer token 或用量数据库；请妥善保管。', 'The backup contains API keys, client secrets, and refresh tokens and is sensitive. It excludes short-lived access tokens, proxies, Bearer tokens, and the usage database. Store it securely.')}</p>
+    <div class="form-actions"><button class="btn-blue" onclick="exportCredentials()">${tr('导出敏感备份', 'Export sensitive backup')}</button></div>
+    <div class="form-group"><label for="credentialImportFile">${tr('恢复备份', 'Restore backup')}</label><input id="credentialImportFile" type="file" accept="application/json,.json" onchange="previewCredentialImport(event)"><div class="secret-note">${tr('选择文件后先预览新增项和 ID 冲突，不会立即写入。', 'Selecting a file previews new entries and ID conflicts before anything is written.')}</div></div>
+    <div id="credentialImportPreview" class="modal-status" role="status">${tr('尚未选择备份文件。', 'No backup file selected.')}</div>
+    <div class="form-group"><label for="credentialConflict">${tr('ID 冲突处理', 'ID conflict handling')}</label><select id="credentialConflict"><option value="skip">${tr('保留当前凭证（推荐）', 'Keep current credential (recommended)')}</option><option value="overwrite">${tr('使用备份覆盖', 'Overwrite from backup')}</option></select></div>
+    <div class="form-actions"><button class="btn-ghost" onclick="closeModal()">${tr('关闭', 'Close')}</button><button class="btn-primary" id="credentialImportApply" onclick="applyCredentialImport()" disabled>${tr('确认恢复', 'Restore')}</button></div>`;
   document.getElementById('modalOverlay').classList.add('show');
 }
 
 async function exportCredentials() {
-  if (!confirm('导出的文件包含长期凭证。确定下载并自行安全保管？')) return;
+  if (!confirm(tr('导出的文件包含长期凭证。确定下载并自行安全保管？', 'The exported file contains long-lived credentials. Download it and store it securely?'))) return;
   try {
     const bundle = await api('GET', '/api/credentials/export');
     const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
@@ -588,7 +706,7 @@ async function exportCredentials() {
     const link = document.createElement('a');
     link.href = url; link.download = 'na2h-credentials.json';
     document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
-    toast('敏感凭证备份已导出', 'success');
+    toast(tr('敏感凭证备份已导出', 'Sensitive credential backup exported'), 'success');
   } catch (error) { toast(error.message, 'error'); }
 }
 
@@ -597,23 +715,27 @@ async function previewCredentialImport(event) {
   const preview = document.getElementById('credentialImportPreview');
   const applyButton = document.getElementById('credentialImportApply');
   pendingCredentialBundle = null; applyButton.disabled = true;
-  if (!file) { preview.textContent = '尚未选择备份文件。'; return; }
-  if (file.size > 1024 * 1024) { preview.textContent = '备份文件超过 1 MiB 限制。'; return; }
+  if (!file) { preview.textContent = tr('尚未选择备份文件。', 'No backup file selected.'); return; }
+  if (file.size > 1024 * 1024) { preview.textContent = tr('备份文件超过 1 MiB 限制。', 'The backup file exceeds the 1 MiB limit.'); return; }
   try {
     const bundle = JSON.parse(await file.text());
     const result = await api('POST', '/api/credentials/import', { bundle, action: 'preview', conflict: 'skip' });
     pendingCredentialBundle = bundle;
     const plan = result.plan || {};
-    const conflicts = (plan.conflicts || []).map(item => `${item.kind}/${item.id}`).join('、');
-    preview.textContent = `可新增 ${plan.total_new || 0} 个，冲突 ${plan.total_conflicts || 0} 个${conflicts ? `：${conflicts}` : ''}`;
+    const conflicts = (plan.conflicts || []).map(item => `${item.kind}/${item.id}`).join(language === 'en' ? ', ' : '、');
+    preview.textContent = language === 'en'
+      ? `${plan.total_new || 0} new, ${plan.total_conflicts || 0} conflicts${conflicts ? `: ${conflicts}` : ''}`
+      : `可新增 ${plan.total_new || 0} 个，冲突 ${plan.total_conflicts || 0} 个${conflicts ? `：${conflicts}` : ''}`;
     applyButton.disabled = false;
-  } catch (error) { preview.textContent = `无法读取备份：${error.message}`; }
+  } catch (error) { preview.textContent = `${tr('无法读取备份：', 'Could not read backup: ')}${error.message}`; }
 }
 
 async function applyCredentialImport() {
   if (!pendingCredentialBundle) return;
   const conflict = value('credentialConflict') || 'skip';
-  const warning = conflict === 'overwrite' ? '将使用备份覆盖同 ID 凭证。确定继续？' : '将导入新凭证并跳过同 ID 项。确定继续？';
+  const warning = conflict === 'overwrite'
+    ? tr('将使用备份覆盖同 ID 凭证。确定继续？', 'Credentials with matching IDs will be overwritten from the backup. Continue?')
+    : tr('将导入新凭证并跳过同 ID 项。确定继续？', 'New credentials will be imported and matching IDs skipped. Continue?');
   if (!confirm(warning)) return;
   const button = document.getElementById('credentialImportApply');
   button.disabled = true;
@@ -621,7 +743,9 @@ async function applyCredentialImport() {
     const response = await api('POST', '/api/credentials/import', { bundle: pendingCredentialBundle, action: 'apply', conflict });
     const result = response.result || {};
     pendingCredentialBundle = null; closeModal(); await loadCredentials();
-    toast(`恢复完成 · 新增 ${result.imported || 0} · 覆盖 ${result.overwritten || 0} · 跳过 ${result.skipped || 0}`, 'success');
+    toast(language === 'en'
+      ? `Restore complete · ${result.imported || 0} imported · ${result.overwritten || 0} overwritten · ${result.skipped || 0} skipped`
+      : `恢复完成 · 新增 ${result.imported || 0} · 覆盖 ${result.overwritten || 0} · 跳过 ${result.skipped || 0}`, 'success');
   } catch (error) { toast(error.message, 'error'); button.disabled = false; }
 }
 
@@ -630,25 +754,25 @@ function openCredentialModal(kind, id = '') {
   const isEdit = Boolean(editingId);
   const credential = (state.credentials[kind] || []).find(item => item.id === editingId);
   const modal = document.getElementById('modalContent');
-  const title = `${isEdit ? '编辑' : '添加'} ${kind === 'aistudio' ? 'AI Studio key' : 'Antigravity 账号'}`;
-  const note = isEdit ? '敏感字段不会回显。留空保持当前值，非敏感字段可清空。' : '敏感字段只会保存到本地配置，不会显示在列表中。';
+  const title = `${isEdit ? tr('编辑', 'Edit') : tr('添加', 'Add')} ${kind === 'aistudio' ? 'AI Studio key' : tr('Antigravity 账号', 'Antigravity account')}`;
+  const note = isEdit ? tr('敏感字段不会回显。留空保持当前值，非敏感字段可清空。', 'Secret fields are never echoed. Leave them blank to keep current values; non-secret fields may be cleared.') : tr('敏感字段只会保存到本地配置，不会显示在列表中。', 'Secret fields are stored only in the local configuration and are never shown in the list.');
   const idValue = isEdit ? esc(editingId) : '';
   if (kind === 'aistudio') {
     modal.innerHTML = `<h2 id="modalTitle">${title}</h2><p class="modal-note">${note}</p>
       <div class="form-group"><label for="mId">ID</label><input id="mId" value="${idValue}" ${isEdit ? 'readonly' : ''}></div>
-      <div class="form-group"><label for="mApiKey">API key</label><input id="mApiKey" type="password" autocomplete="new-password" placeholder="${isEdit && credential?.api_key_set ? '已设置；留空保持当前值' : 'AIzaSy…'}"><div class="secret-note">${isEdit ? '需要轮换时再输入新 key。' : '必填。'}</div></div>
-      <div class="form-grid"><div class="form-group"><label for="mProject">Project（可选）</label><input id="mProject" value="${esc(credential?.project || '')}"></div><div class="form-group"><label for="mAccount">Account（可选）</label><input id="mAccount" value="${esc(credential?.account || '')}" placeholder="user@gmail.com"></div></div>
-      <div class="modal-status" id="modalStatus" role="alert"></div><div class="form-actions"><button class="btn-ghost" onclick="closeModal()">取消</button><button class="btn-primary" onclick="saveCredential('aistudio')">${isEdit ? '保存' : '添加'}</button></div>`;
+      <div class="form-group"><label for="mApiKey">API key</label><input id="mApiKey" type="password" autocomplete="new-password" placeholder="${isEdit && credential?.api_key_set ? tr('已设置；留空保持当前值', 'Set; leave blank to keep current value') : 'AIzaSy…'}"><div class="secret-note">${isEdit ? tr('需要轮换时再输入新 key。', 'Enter a new key only when rotating it.') : tr('必填。', 'Required.')}</div></div>
+      <div class="form-grid"><div class="form-group"><label for="mProject">${tr('Project（可选）', 'Project (optional)')}</label><input id="mProject" value="${esc(credential?.project || '')}"></div><div class="form-group"><label for="mAccount">${tr('Account（可选）', 'Account (optional)')}</label><input id="mAccount" value="${esc(credential?.account || '')}" placeholder="user@gmail.com"></div></div>
+      <div class="modal-status" id="modalStatus" role="alert"></div><div class="form-actions"><button class="btn-ghost" onclick="closeModal()">${tr('取消', 'Cancel')}</button><button class="btn-primary" onclick="saveCredential('aistudio')">${isEdit ? tr('保存', 'Save') : tr('添加', 'Add')}</button></div>`;
   } else {
     modal.innerHTML = `<h2 id="modalTitle">${title}</h2><p class="modal-note">${note}</p>
       <div class="form-group"><label for="mId">ID</label><input id="mId" value="${idValue}" ${isEdit ? 'readonly' : ''}></div>
-      <div class="form-group"><label for="mAccount">Google 账号（可选）</label><input id="mAccount" value="${esc(credential?.account || '')}" placeholder="user@gmail.com"></div>
+      <div class="form-group"><label for="mAccount">${tr('Google 账号（可选）', 'Google account (optional)')}</label><input id="mAccount" value="${esc(credential?.account || '')}" placeholder="user@gmail.com"></div>
       <div class="form-group"><label for="mClientId">Client ID</label><input id="mClientId" value="${esc(credential?.client_id || '')}" placeholder="xxx.apps.googleusercontent.com"></div>
-      <div class="form-group"><label for="mClientSecret">Client secret</label><input id="mClientSecret" type="password" autocomplete="new-password" placeholder="${isEdit && credential?.client_secret_set ? '已设置；留空保持当前值' : 'GOCSPX-…'}"></div>
-      <div class="form-group"><label for="mRefreshToken">Refresh token</label><input id="mRefreshToken" type="password" autocomplete="new-password" placeholder="${isEdit && credential?.refresh_token_set ? '已设置；留空保持当前值' : '1//…'}"></div>
-      <div class="form-group"><label for="mProject">Project（可选）</label><input id="mProject" value="${esc(credential?.project || '')}" placeholder="留空使用动态发现"></div>
-      <label class="checkbox"><input id="mAutoOnboard" type="checkbox" ${credential?.auto_onboard ? 'checked' : ''}>允许自动 onboard</label>
-      <div class="modal-status" id="modalStatus" role="alert"></div><div class="form-actions"><button class="btn-ghost" onclick="closeModal()">取消</button><button class="btn-blue" onclick="saveCredential('antigravity')">${isEdit ? '保存' : '添加'}</button></div>`;
+      <div class="form-group"><label for="mClientSecret">Client secret</label><input id="mClientSecret" type="password" autocomplete="new-password" placeholder="${isEdit && credential?.client_secret_set ? tr('已设置；留空保持当前值', 'Set; leave blank to keep current value') : 'GOCSPX-…'}"></div>
+      <div class="form-group"><label for="mRefreshToken">Refresh token</label><input id="mRefreshToken" type="password" autocomplete="new-password" placeholder="${isEdit && credential?.refresh_token_set ? tr('已设置；留空保持当前值', 'Set; leave blank to keep current value') : '1//…'}"></div>
+      <div class="form-group"><label for="mProject">${tr('Project（可选）', 'Project (optional)')}</label><input id="mProject" value="${esc(credential?.project || '')}" placeholder="${tr('留空使用动态发现', 'Leave blank for dynamic discovery')}"></div>
+      <label class="checkbox"><input id="mAutoOnboard" type="checkbox" ${credential?.auto_onboard ? 'checked' : ''}>${tr('允许自动 onboard', 'Allow automatic onboarding')}</label>
+      <div class="modal-status" id="modalStatus" role="alert"></div><div class="form-actions"><button class="btn-ghost" onclick="closeModal()">${tr('取消', 'Cancel')}</button><button class="btn-blue" onclick="saveCredential('antigravity')">${isEdit ? tr('保存', 'Save') : tr('添加', 'Add')}</button></div>`;
   }
   document.getElementById('modalOverlay').classList.add('show');
   document.getElementById('mId').focus();
@@ -660,31 +784,31 @@ function value(id) { return document.getElementById(id).value.trim(); }
 function modalError(message) { document.getElementById('modalStatus').textContent = message; }
 async function saveCredential(kind) {
   const id = value('mId');
-  if (!id) { modalError('ID 不能为空'); return; }
+  if (!id) { modalError(tr('ID 不能为空', 'ID is required')); return; }
   const isEdit = Boolean(editingId);
   try {
     let body;
     if (kind === 'aistudio') {
       const apiKey = value('mApiKey');
-      if (!isEdit && !apiKey) { modalError('新增时 API key 必填'); return; }
+      if (!isEdit && !apiKey) { modalError(tr('新增时 API key 必填', 'API key is required when adding a credential')); return; }
       body = { project: value('mProject'), account: value('mAccount') };
       if (!isEdit) Object.assign(body, { id, api_key: apiKey });
       else if (apiKey) body.api_key = apiKey;
     } else {
       const clientId = value('mClientId'); const clientSecret = value('mClientSecret'); const refreshToken = value('mRefreshToken');
-      if (!isEdit && (!clientId || !clientSecret || !refreshToken)) { modalError('新增时 OAuth 字段均必填'); return; }
+      if (!isEdit && (!clientId || !clientSecret || !refreshToken)) { modalError(tr('新增时 OAuth 字段均必填', 'All OAuth fields are required when adding a credential')); return; }
       body = { account: value('mAccount'), project: value('mProject'), auto_onboard: document.getElementById('mAutoOnboard').checked };
       if (!isEdit) Object.assign(body, { id, client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken });
       else { if (clientId) body.client_id = clientId; if (clientSecret) body.client_secret = clientSecret; if (refreshToken) body.refresh_token = refreshToken; }
     }
     await api(isEdit ? 'PUT' : 'POST', isEdit ? `/api/credentials/${kind}/${encodeURIComponent(editingId)}` : `/api/credentials/${kind}`, body);
-    closeModal(); toast(isEdit ? '已保存，未填写的密钥保持不变' : '已添加', 'success'); await loadCredentials();
+    closeModal(); toast(isEdit ? tr('已保存，未填写的密钥保持不变', 'Saved; blank secret fields kept their current values') : tr('已添加', 'Added'), 'success'); await loadCredentials();
   } catch (error) { modalError(error.message); }
 }
 async function deleteCredential(kind, encodedId) {
   const id = decodeURIComponent(encodedId);
-  if (!confirm(`确定删除凭证“${id}”？`)) return;
-  try { await api('DELETE', `/api/credentials/${kind}/${encodeURIComponent(id)}`); toast('已删除', 'success'); await loadCredentials(); }
+  if (!confirm(tr(`确定删除凭证“${id}”？`, `Delete credential “${id}”?`))) return;
+  try { await api('DELETE', `/api/credentials/${kind}/${encodeURIComponent(id)}`); toast(tr('已删除', 'Deleted'), 'success'); await loadCredentials(); }
   catch (error) { toast(error.message, 'error'); }
 }
 async function testCredential(kind, encodedId) {
@@ -694,13 +818,9 @@ async function testCredential(kind, encodedId) {
   try {
     const result = await api('POST', `/api/credentials/${kind}/${encodeURIComponent(id)}/test`);
     const latency = Number.isFinite(result.latency_ms) ? result.latency_ms : Math.round(performance.now() - started);
-    const stageLabels = { local: '本地', oauth: 'OAuth', control_plane: '控制面', inference: '推理' };
-    const stages = (result.health?.stages || []).map(stage => stageLabels[stage.name] || stage.name).join(' → ');
-    state.tests[key] = { ok: true, message: `检查通过 · ${stages || result.model} · ${latency} ms` };
+    state.tests[key] = { ok: true, stages: (result.health?.stages || []).map(stage => stage.name), model: result.model, latency };
   } catch (error) {
-    const stageLabels = { local: '本地', oauth: 'OAuth', control_plane: '控制面', inference: '推理' };
-    const failedStage = error.data?.error?.stage;
-    state.tests[key] = { ok: false, message: `检查失败${failedStage ? `（${stageLabels[failedStage] || failedStage}）` : ''} · ${error.message}` };
+    state.tests[key] = { ok: false, failedStage: error.data?.error?.stage, errorMessage: error.message };
   }
   finally { state.busy.delete(key); renderCredentials(); }
 }
@@ -712,12 +832,45 @@ async function refreshAntigravityQuota(encodedId) {
     const quota = await api('POST', `/api/credentials/antigravity/${encodeURIComponent(id)}/quota/refresh`);
     const credential = (state.credentials.antigravity || []).find(item => item.id === id);
     if (credential) credential.quota = quota;
-    toast('AGY 额度已刷新', 'success');
+    toast(tr('AGY 额度已刷新', 'AGY quota refreshed'), 'success');
   } catch (error) {
-    toast(`额度刷新失败：${error.message}`, 'error');
+    toast(`${tr('额度刷新失败：', 'Quota refresh failed: ')}${error.message}`, 'error');
   } finally {
     state.busy.delete(key); renderCredentials();
   }
+}
+
+async function verifyCredential(encodedId) {
+  const id = decodeURIComponent(encodedId); const key = `verify:${id}`;
+  if (!confirm(tr('完整自检将发起 3 次推理，并主动检查 OAuth、控制面和额度。确定继续？', 'Full verification makes 3 inference requests and explicitly checks OAuth, the control plane, and quota. Continue?'))) return;
+  state.busy.add(key); renderCredentials();
+  try {
+    const report = await api('POST', `/api/credentials/antigravity/${encodeURIComponent(id)}/verify`);
+    const passed = report.status === 'passed';
+    state.verifications[id] = {
+      ok: passed,
+      report,
+      durationMs: report.summary?.duration_ms || 0,
+      failedStages: (report.stages || []).filter(stage => stage.status !== 'passed').map(stage => stage.name),
+    };
+  } catch (error) {
+    state.verifications[id] = { ok: false, report: null, errorMessage: error.message };
+  } finally {
+    state.busy.delete(key); renderCredentials();
+  }
+}
+
+function downloadVerificationReport(encodedId) {
+  const id = decodeURIComponent(encodedId);
+  const report = state.verifications[id]?.report;
+  if (!report) return;
+  const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `na2h-verification-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+  toast(tr('脱敏验证报告已下载', 'Redacted verification report downloaded'), 'success');
 }
 
 async function loadUsage() {
@@ -727,16 +880,16 @@ async function loadUsage() {
 function renderUsage() {
   const summary = state.usage || { by_credential: [], by_model: [] };
   document.getElementById('usageStats').innerHTML = [
-    ['Requests', formatNum(summary.total_requests)], ['Input tokens', formatNum(summary.total_input_tokens)],
-    ['Cached input', formatNum(summary.total_cache_read_tokens)], ['Cache write', formatNum(summary.total_cache_write_tokens)],
-    ['Output tokens', formatNum(summary.total_output_tokens)], ['Reasoning', formatNum(summary.total_reasoning_tokens)],
-    ['API 等价成本', formatUsd(summary.total_cost_usd)],
+    [tr('请求数', 'Requests'), formatNum(summary.total_requests)], [tr('输入 token', 'Input tokens'), formatNum(summary.total_input_tokens)],
+    [tr('缓存输入', 'Cached input'), formatNum(summary.total_cache_read_tokens)], [tr('缓存写入', 'Cache write'), formatNum(summary.total_cache_write_tokens)],
+    [tr('输出 token', 'Output tokens'), formatNum(summary.total_output_tokens)], [tr('推理 token', 'Reasoning'), formatNum(summary.total_reasoning_tokens)],
+    [tr('API 等价成本', 'API-equivalent cost'), formatUsd(summary.total_cost_usd)],
   ].map(item => `<div class="stat"><div class="stat-label">${item[0]}</div><div class="stat-value">${item[1]}</div></div>`).join('');
   const usageRow = (row, name) => [esc(name), row.requests, formatNum(row.input_tokens), formatNum(row.cache_read_tokens), formatNum(row.cache_write_tokens), formatNum(row.output_tokens), formatNum(row.reasoning_tokens), formatUsd(row.cost_usd)];
   const credentialRows = (summary.by_credential || []).map(row => usageRow(row, row.credential_id));
   const modelRows = (summary.by_model || []).map(row => usageRow(row, row.model));
-  const headers = ['Name', 'Requests', 'Input', 'Cached input', 'Cache write', 'Output', 'Reasoning', 'API 等价成本'];
-  document.getElementById('usageTable').innerHTML = `<h3 style="font-size:14px">按凭证</h3>${tableHtml(headers, credentialRows)}<h3 style="margin:22px 0 8px;font-size:14px">按模型</h3>${tableHtml(headers, modelRows)}`;
+  const headers = [tr('名称', 'Name'), tr('请求数', 'Requests'), tr('输入', 'Input'), tr('缓存输入', 'Cached input'), tr('缓存写入', 'Cache write'), tr('输出', 'Output'), tr('推理', 'Reasoning'), tr('API 等价成本', 'API-equivalent cost')];
+  document.getElementById('usageTable').innerHTML = `<h3 style="font-size:14px">${tr('按凭证', 'By credential')}</h3>${tableHtml(headers, credentialRows)}<h3 style="margin:22px 0 8px;font-size:14px">${tr('按模型', 'By model')}</h3>${tableHtml(headers, modelRows)}`;
 }
 function formatUsd(value) {
   const amount = Number(value || 0);
@@ -744,7 +897,7 @@ function formatUsd(value) {
   return '$' + amount.toFixed(6);
 }
 function tableHtml(headers, rows) {
-  if (!rows.length) return '<div class="empty">还没有用量数据</div>';
+  if (!rows.length) return `<div class="empty">${tr('还没有用量数据', 'No usage data yet')}</div>`;
   return `<table><thead><tr>${headers.map(esc).map(item => `<th>${item}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 
@@ -758,12 +911,19 @@ function openSettings() {
 async function loadSettings() {
   try {
     const config = await api('GET', '/api/config');
+    state.config = config;
     document.getElementById('setHost').value = config.host || ''; document.getElementById('setPort').value = config.port || '';
-    document.getElementById('setAuth').value = ''; document.getElementById('setAuth').placeholder = config.auth_token_set ? '留空：保持现有密钥' : '请设置部署密钥'; document.getElementById('setRetries').value = config.max_retries || 3;
+    document.getElementById('setAuth').value = ''; document.getElementById('setRetries').value = config.max_retries || 3;
     document.getElementById('setCooldown').value = config.cooldown_seconds || 60; document.getElementById('setDb').value = config.db_path || '';
     document.getElementById('setProxy').value = config.proxy || ''; document.getElementById('setProxySource').value = config.proxy_source || 'unknown'; document.getElementById('setConfigFile').value = config.config_file || '';
-    const diagnostics = state.health?.diagnostics || {}; document.getElementById('setDiagnostics').value = diagnostics.enabled ? diagnostics.path : 'disabled'; settingsLoaded = true;
+    renderSettingsCopy(); settingsLoaded = true;
   } catch (error) { toast(error.message, 'error'); }
+}
+function renderSettingsCopy() {
+  const config = state.config || {};
+  document.getElementById('setAuth').placeholder = config.auth_token_set ? tr('留空：保持现有密钥', 'Leave blank to keep the current secret') : tr('请设置部署密钥', 'Set a deployment secret');
+  const diagnostics = state.health?.diagnostics || {};
+  document.getElementById('setDiagnostics').value = diagnostics.enabled ? diagnostics.path : tr('已禁用', 'Disabled');
 }
 async function saveSettings() {
   try {
@@ -772,14 +932,16 @@ async function saveSettings() {
     const saved = await api('PUT', '/api/config', body);
     document.getElementById('setAuth').value = '';
     document.getElementById('setProxySource').value = saved.proxy_source || 'unknown';
-    toast('设置已保存，Host/Port/Bearer token/数据库变更需重启', 'success');
+    state.config = { ...(state.config || {}), ...saved };
+    toast(tr('设置已保存，Host/Port/Bearer token/数据库变更需重启', 'Settings saved. Host, Port, Bearer token, and database changes require restart.'), 'success');
   } catch (error) { toast(error.message, 'error'); }
 }
 
-function formatNum(number) { return Number(number || 0).toLocaleString(); }
+function formatNum(number) { return Number(number || 0).toLocaleString(language); }
 function esc(valueToEscape) { const node = document.createElement('div'); node.textContent = valueToEscape == null ? '' : String(valueToEscape); return node.innerHTML; }
 function arg(valueToEncode) { return encodeURIComponent(valueToEncode); }
 function toast(message, type) { const node = document.getElementById('toast'); node.textContent = message; node.className = `toast ${type} show`; clearTimeout(toast.timer); toast.timer = setTimeout(() => node.classList.remove('show'), 3200); }
+applyPreferences();
 init();
 </script>
 </body>

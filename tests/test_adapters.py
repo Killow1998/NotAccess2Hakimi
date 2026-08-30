@@ -213,6 +213,27 @@ def test_openai_to_gemini_tools_multimodal_and_signatures():
     assert result["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "low"}
 
 
+def test_openai_to_gemini_named_tool_choice_limits_the_allowed_function():
+    result = _openai_to_gemini({
+        "messages": [{"role": "user", "content": "call the fixture"}],
+        "tools": [{
+            "type": "function",
+            "function": {
+                "name": "list_files",
+                "parameters": {"type": "object"},
+            },
+        }],
+        "tool_choice": {"function": {"name": "list_files"}},
+    })
+
+    assert result["toolConfig"] == {
+        "functionCallingConfig": {
+            "mode": "ANY",
+            "allowedFunctionNames": ["list_files"],
+        }
+    }
+
+
 def test_openai_to_gemini_marks_first_unsigned_parallel_tool_call_as_replay():
     """Synthetic tool history must use Gemini's documented replay marker."""
     body = {

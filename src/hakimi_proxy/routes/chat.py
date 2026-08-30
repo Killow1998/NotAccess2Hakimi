@@ -59,7 +59,13 @@ async def chat_completions(request: Request):
     return await _run_chat_completion(request, body)
 
 
-async def _run_chat_completion(request: Request, body: dict):
+async def _run_chat_completion(
+    request: Request,
+    body: dict,
+    *,
+    credential_id: str | None = None,
+    provider: str | None = None,
+):
     """Run the shared upstream Chat Completions path for any facade."""
     model = body.get("model", "gemini-3.7-flash")
     stream = body.get("stream", False)
@@ -70,13 +76,19 @@ async def _run_chat_completion(request: Request, body: dict):
     antigravity: AntigravityAdapter = request.app.state.antigravity
     max_retries: int = request.app.state.max_retries
 
-    adapter = _select_adapter(model, aistudio, antigravity)
+    if provider == "antigravity":
+        adapter = antigravity
+    elif provider == "aistudio":
+        adapter = aistudio
+    else:
+        adapter = _select_adapter(model, aistudio, antigravity)
 
     attempt = 0
+    attempt_limit = 1 if credential_id else max_retries
     last_failure = UpstreamFailure("no_available_credentials", "All retries exhausted: No available credentials")
     queue_deadline = time.monotonic() + 30.0
 
-    while attempt < max_retries:
+    while attempt < attempt_limit:
         attempt += 1
         try:
             adapter, cred = await _acquire_for_request(
@@ -86,6 +98,7 @@ async def _run_chat_completion(request: Request, body: dict):
                 antigravity,
                 model,
                 queue_deadline,
+                credential_id=credential_id,
             )
         except CredentialUnavailable as exc:
             if exc.reason == "busy_timeout":
@@ -175,8 +188,17 @@ async def _acquire_for_request(
     antigravity: AntigravityAdapter,
     model: str,
     deadline: float,
+    *,
+    credential_id: str | None = None,
 ) -> tuple[UpstreamAdapter, PooledCredential]:
     """Prefer the selected adapter, then try a compatible fallback before waiting."""
+    if credential_id:
+        remaining = max(0.0, deadline - time.monotonic())
+        return adapter, await pool.acquire(
+            kind=adapter.kind,
+            credential_id=credential_id,
+            timeout_seconds=remaining,
+        )
     ordered = [adapter]
     other = antigravity if adapter.kind == "aistudio" else aistudio
     if other.supports_model(model):

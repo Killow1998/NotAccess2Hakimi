@@ -534,3 +534,115 @@ def test_doctor_live_accepts_explicit_provider_and_credential(tmp_path, capsys, 
     assert payload["status"] == "healthy"
     assert payload["live"]["provider"] == "antigravity"
     assert payload["live"]["credential_id"] == "agy-main"
+
+
+def test_verify_writes_private_redacted_report(tmp_path, capsys, monkeypatch):
+    from hakimi_proxy import cli
+
+    config_path = tmp_path / "config.yaml"
+    report_path = tmp_path / "verification.json"
+    save_config(
+        ProxyConfig(
+            port=18006,
+            auth_token="local-bearer-secret",
+            antigravity_credentials=[AntigravityCredential(
+                id="private-account@example.com",
+                client_id="client-private",
+                client_secret="secret-private",
+                refresh_token="refresh-private",
+            )],
+        ),
+        config_path,
+    )
+    report = {
+        "schema_version": 1,
+        "fingerprint_version": 1,
+        "status": "passed",
+        "provider": "antigravity",
+        "model": "antigravity/gemini-3.7-flash-tiered",
+        "credential_ref": "sha256:0123456789abcdef",
+        "generated_at": "2026-08-29T00:00:00+00:00",
+        "stages": [],
+        "summary": {"inference_requests": 3, "leaked_leases": 0, "duration_ms": 1},
+    }
+
+    class VerifyClient:
+        def __init__(self, **kwargs):
+            assert kwargs["trust_env"] is False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def get(self, url, **kwargs):
+            assert url.endswith("/api/credentials")
+            assert kwargs["headers"]["Authorization"] == "Bearer local-bearer-secret"
+            return httpx.Response(200, request=httpx.Request("GET", url), json={
+                "aistudio": [],
+                "antigravity": [{"id": "private-account@example.com"}],
+            })
+
+        def post(self, url, **kwargs):
+            assert url.endswith(
+                "/api/credentials/antigravity/private-account%40example.com/verify"
+            )
+            return httpx.Response(200, request=httpx.Request("POST", url), json=report)
+
+    monkeypatch.setattr(cli.httpx, "Client", VerifyClient)
+
+    exit_code = cli.main([
+        "verify",
+        "--config", str(config_path),
+        "--json",
+        "--output", str(report_path),
+    ])
+
+    assert exit_code == 0
+    assert json.loads(capsys.readouterr().out) == report
+    assert json.loads(report_path.read_text(encoding="utf-8")) == report
+    assert report_path.stat().st_mode & 0o777 == 0o600
+    serialized = report_path.read_text(encoding="utf-8")
+    for secret in (
+        "private-account@example.com",
+        "local-bearer-secret",
+        "client-private",
+        "secret-private",
+        "refresh-private",
+    ):
+        assert secret not in serialized
+
+
+def test_verify_replays_saved_report_without_network(tmp_path, capsys, monkeypatch):
+    from hakimi_proxy import cli
+
+    report_path = tmp_path / "verification.json"
+    report_path.write_text(json.dumps({
+        "schema_version": 1,
+        "fingerprint_version": 1,
+        "status": "failed",
+        "provider": "antigravity",
+        "model": "antigravity/gemini-3.7-flash-tiered",
+        "credential_ref": "sha256:0123456789abcdef",
+        "generated_at": "2026-08-29T00:00:00+00:00",
+        "stages": [{"name": "local", "status": "passed", "latency_ms": 0}],
+        "summary": {"inference_requests": 0, "leaked_leases": 0, "duration_ms": 0},
+    }), encoding="utf-8")
+
+    class NoNetwork:
+        def __init__(self, **kwargs):
+            raise AssertionError("offline replay must not construct an HTTP client")
+
+    monkeypatch.setattr(cli.httpx, "Client", NoNetwork)
+
+    exit_code = cli.main(["verify", "--replay", str(report_path), "--json"])
+
+    assert exit_code == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "valid",
+        "report_status": "failed",
+        "schema_version": 1,
+        "fingerprint_version": 1,
+        "stage_count": 1,
+    }

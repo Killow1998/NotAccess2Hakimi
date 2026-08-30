@@ -772,9 +772,25 @@ def _response_stream(
 @router.post("/v1/responses")
 async def responses(request: Request):
     body = await request.json()
+    return await _run_responses(request, body)
+
+
+async def _run_responses(
+    request: Request,
+    body: dict[str, Any],
+    *,
+    credential_id: str | None = None,
+    provider: str | None = None,
+):
+    """Run the Responses facade, optionally pinned by an internal caller."""
     chat_body = responses_to_chat(body)
     custom_tool_names = _custom_tool_names(body)
-    result = await _run_chat_completion(request, chat_body)
+    result = await _run_chat_completion(
+        request,
+        chat_body,
+        credential_id=credential_id,
+        provider=provider,
+    )
     if isinstance(result, StreamingResponse):
         return _response_stream(result, body.get("model", chat_body["model"]), custom_tool_names)
     if not isinstance(result, JSONResponse) or result.status_code != 200:

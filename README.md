@@ -37,6 +37,9 @@ tokscale-style token cost estimation.
   Responses API, replay its result, and verify the final assistant turn end to end.
 - **Operator CLI**: start with `hakimi serve`, inspect local setup with a
   traffic-free `hakimi doctor`, and opt into staged upstream checks with `--live`.
+- **Unified verification**: manually compose OAuth, control-plane, quota,
+  non-streaming Responses, and a signed two-turn Agent replay into one redacted,
+  downloadable structural report with offline replay.
 - **Guided first use**: the single-page UI leads from browser OAuth to account
   repair or a generic OpenAI-compatible Base URL/model handoff.
 
@@ -98,6 +101,23 @@ uv run hakimi doctor --config config.local.yaml --live
 With multiple accounts, select one explicitly, for example
 `--credential antigravity:my-account`. Doctor never prints API keys, OAuth
 secrets, refresh/access tokens, proxy URLs, or the downstream Bearer token.
+
+For a bounded end-to-end Antigravity check, use `verify`. It performs setup
+checks plus exactly three inference requests: one non-streaming response and a
+two-turn streamed function-call/result replay. This is explicit operator
+traffic and is never triggered by page loads or background polling:
+
+```bash
+uv run hakimi verify --config config.local.yaml --output verification.json --json
+uv run hakimi verify --replay verification.json --json
+```
+
+With multiple Antigravity accounts, add `--credential my-account`. The optional
+report file is mode `0600` and contains only an account hash, stage status and
+latency, safe error types/statuses, and structural protocol fingerprints. It
+does not retain prompts, generated output, call IDs, thought signatures, OAuth
+values, project IDs, proxy URLs, or the deployment key. Replay validates the
+passing-stage invariants locally and does not contact NA2H or Google.
 
 ### Quick smoke test
 
@@ -173,11 +193,16 @@ deliberately not part of this version.
 
 The built-in single-page console at `/` provides:
 
+- browser-visible `NA2H` product identity, with persisted Simplified Chinese /
+  English selection and system / light / dark appearance controls available on
+  both the login screen and console
 - one state-driven next action for login, credential repair, or client handoff
 - service health, active credential counts, total requests/tokens/cost
 - AI Studio and Antigravity add/edit/delete cards with live state badges
 - manual Antigravity Gemini shared-pool snapshots with 5h and Weekly/7d
   progress bars and upstream reset times
+- manual Antigravity full verification with an explicit three-inference warning,
+  inline stage result, and client-side redacted-report download
 - per-credential and per-model input, cached-input, cache-write, output, and
   reasoning-token breakdown
 - a collapsed settings section for host, port, auth token, retry count, cooldown,
@@ -189,6 +214,10 @@ generic configuration button writes the complete configuration—including the
 key—to the clipboard only when clicked. Treat that clipboard content as a
 secret. Login is session-only by default; **在此浏览器中保持登录** explicitly
 opts into persistent browser storage, and **退出** removes both copies.
+Language and theme choices are stored separately as non-secret browser
+preferences. Changing language redraws static copy and live status, quota,
+verification, OAuth, migration, and settings messages; model IDs, provider
+names, API fields, and machine-readable error types remain unchanged.
 
 Credential edit forms never echo secrets. Leave a secret field blank to keep the
 stored value; enter a new value only when rotating it. The credential list
@@ -206,6 +235,16 @@ Page reloads do not contact Google, a failed refresh does not cool down an
 otherwise healthy inference credential, and the snapshot is cleared on process
 restart or account rotation. It is an upstream-reported hint, not local
 accounting or a promise that the next request will be accepted.
+
+The Antigravity **完整自检** action composes the account's local, OAuth,
+control-plane, quota, non-streaming Responses, streamed function-call, and
+signed tool-result replay checks. It asks for confirmation because it makes
+three inference requests. The action pins one selected account, does not hold a
+setup lease while Responses runs, stores no report on the server, and downloads
+only the same allowlisted structural report returned by the authenticated API.
+Its first streamed turn explicitly selects the fixed `list_files` fixture, so a
+live model cannot replace the required tool call with an ordinary text answer;
+the second turn remains unconstrained and must produce visible final text.
 
 The usage dashboard is local SQLite metering. **API 等价成本** estimates the
 corresponding public API list-price value; it is not an Antigravity charge or
@@ -256,6 +295,7 @@ inside the existing bounded queue.
 | `/api/credentials/antigravity` | POST | Add Antigravity account |
 | `/api/credentials/antigravity/{id}` | PUT/DELETE | Partially update/delete; omitted OAuth fields are preserved |
 | `/api/credentials/antigravity/{id}/quota/refresh` | POST | Manually refresh and cache one account's shared-window quota snapshot |
+| `/api/credentials/antigravity/{id}/verify` | POST | Run one bounded full verification and return a redacted structural report |
 | `/api/credentials/antigravity/oauth/start` | POST | Start local/remote browser OAuth |
 | `/api/credentials/antigravity/oauth/status/{state}` | GET | Poll the OAuth login |
 | `/api/credentials/antigravity/oauth/complete` | POST | Submit a copied callback URL or one-time OAuth code |
@@ -382,12 +422,13 @@ compile, gate, and package build without repository secrets.
 
 ```
 src/hakimi_proxy/
-  cli.py             # first-start key, serve, and redacted local/live doctor
+  cli.py             # first-start key, serve, doctor, and report verification/replay
   config.py          # YAML config loading + dataclasses
   model_catalog.py   # Shared model IDs + verified discovery metadata
   credential_bundle.py # Versioned credential backup/restore validation
   diagnostics.py     # Private bounded operational JSONL journal
   reliability_gate.py # Bounded fake-upstream public API reliability check
+  verification.py    # Manual staged verification + redacted report replay
   oauth.py           # Local/remote browser OAuth callback + token exchange
   auth.py            # Bearer token middleware
   pool.py            # Credential pool state machine + LRU scheduling
