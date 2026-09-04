@@ -80,8 +80,8 @@ def create_app() -> FastAPI:
     oauth_credential = next(iter(config.antigravity_credentials), None)
     app.state.antigravity_oauth = AntigravityOAuthManager(
         proxy=config.proxy,
-        client_id=oauth_credential.client_id if oauth_credential else "",
-        client_secret=oauth_credential.client_secret if oauth_credential else "",
+        client_id=(oauth_credential.client_id if oauth_credential and oauth_credential.client_id else config.antigravity_client_id),
+        client_secret=(oauth_credential.client_secret if oauth_credential and oauth_credential.client_secret else config.antigravity_client_secret),
     )
     app.state.max_retries = config.max_retries
     app.state.config = config

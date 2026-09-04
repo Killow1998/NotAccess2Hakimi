@@ -12,6 +12,7 @@ from typing import Any
 
 
 AISTUDIO_MODELS: frozenset[str] = frozenset({
+    "gemini-3.8-flash",
     "gemini-3.7-flash",
     "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
@@ -22,6 +23,8 @@ AISTUDIO_MODELS: frozenset[str] = frozenset({
 })
 
 ANTIGRAVITY_MODELS: frozenset[str] = frozenset({
+    "gemini-3.8-flash",
+    "gemini-3.8-flash-tiered",
     "gemini-3.7-flash",
     "gemini-3.7-flash-tiered",
     "gemini-3.5-flash",
@@ -39,6 +42,7 @@ ANTIGRAVITY_MODELS: frozenset[str] = frozenset({
 })
 
 ANTIGRAVITY_MODEL_ALIASES: dict[str, str] = {
+    "gemini-3.8-flash": "gemini-3.8-flash-tiered",
     "gemini-3.7-flash": "gemini-3.7-flash-tiered",
 }
 
@@ -52,9 +56,38 @@ _COMMON_CAPABILITIES: dict[str, Any] = {
 }
 
 # Direct Gemini facts come from Google's model documentation as captured in
-# EMP's bundled official registry.  The Antigravity tiered facts are from the
-# model catalog and live Codex acceptance observed through NA2H.
+# EMP's bundled official registry. Antigravity tiered IDs reuse those public
+# facts for routing metadata; live account discovery remains authoritative for
+# actual availability.
 _KNOWN_MODELS: dict[str, dict[str, Any]] = {
+    "gemini-3.8-flash": {
+        "display_name": "Gemini 3.8 Flash",
+        "context_window": 1_048_576,
+        "max_input_tokens": 1_048_576,
+        "output_limit": 65_536,
+        "supports_reasoning": True,
+        "reasoning_levels": ["low", "medium", "high"],
+        "architecture": {
+            "input_modalities": ["text", "image"],
+            "output_modalities": ["text"],
+        },
+        "capability_source": "official",
+    },
+    "gemini-3.8-flash-tiered": {
+        "display_name": "Gemini 3.8 Flash (Antigravity tiered)",
+        "context_window": 1_048_576,
+        "max_input_tokens": 1_048_576,
+        "output_limit": 65_536,
+        "supports_reasoning": True,
+        "reasoning_levels": ["low", "medium", "high"],
+        "architecture": {
+            "input_modalities": ["text", "image"],
+            "output_modalities": ["text"],
+        },
+        # The public model facts are official; this tiered ID is the
+        # Antigravity transport alias and remains subject to live discovery.
+        "capability_source": "official",
+    },
     "gemini-3.7-flash": {
         "display_name": "Gemini 3.7 Flash",
         "context_window": 1_000_000,

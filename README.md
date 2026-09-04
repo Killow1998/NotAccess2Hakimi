@@ -132,7 +132,7 @@ curl -fsS http://127.0.0.1:12345/v1/models \
 curl -fsS http://127.0.0.1:12345/v1/responses \
   -H "Authorization: Bearer $HAKIMI_TOKEN" \
   -H 'Content-Type: application/json' \
-  --data '{"model":"antigravity/gemini-3.7-flash-tiered","input":"Reply exactly: OK","max_output_tokens":512}'
+  --data '{"model":"antigravity/gemini-3.8-flash","input":"Reply exactly: OK","max_output_tokens":512}'
 ```
 
 The final response should contain `output_text: "OK"`. If the pool is
@@ -147,7 +147,7 @@ Point any OpenAI-compatible client at the proxy:
 ```bash
 export OPENAI_BASE_URL=http://127.0.0.1:12345/v1
 export OPENAI_API_KEY=your-proxy-bearer-token
-export CODEX_MODEL=gemini-3.7-flash-tiered
+export CODEX_MODEL=antigravity/gemini-3.8-flash
 ```
 
 Codex uses the Responses facade. It translates the request to the existing
@@ -158,11 +158,11 @@ remains available for clients that use that protocol.
 When switching between Hakimi and a direct Codex subscription model, start a
 new Codex session so provider-specific tool history is not replayed upstream.
 
-Bare model names prefer AI Studio. Use `antigravity/gemini-3.7-flash-tiered` to
-explicitly select the Antigravity catalog ID. The adapter accepts the display
-alias `antigravity/gemini-3.7-flash` and forwards it as
-`gemini-3.7-flash-tiered`; `gemini-3.6-flash-high` is a separate catalog model,
-not an automatic alias for 3.7.
+Bare model names prefer AI Studio. Use `antigravity/gemini-3.8-flash` or
+`antigravity/gemini-3.8-flash-tiered` to explicitly select the Antigravity
+route. The adapter resolves the 3.8 display alias to the tiered transport ID;
+the equivalent 3.7 aliases remain supported. `gemini-3.6-flash-high` is a
+separate catalog model, not an automatic alias for 3.8.
 
 ### v0.6.0 boundary
 
@@ -315,23 +315,25 @@ Configure API keys only for projects and accounts you are authorized to use.
 ### Antigravity (OAuth mode)
 
 The Web UI's **+ Antigravity 登录** button is the recommended path. It opens a
-Google consent page. When the console is opened through localhost it attempts
-an automatic callback on `127.0.0.1:51121`; when opened through a domain or IP,
-it starts a listener-free flow suitable for a remote server. Complete Google
-login in any Chrome, then paste the full
-`localhost/.../oauth-callback?code=...&state=...` URL (or one-time code) into
-the dialog. Hakimi validates the session state, exchanges the code, and stores
-the account and tokens in the mode-0600 local config. Manual fields remain a
+Google consent page and always uses a listener-free PKCE flow with
+`https://antigravity.google/oauth-callback`. Complete Google login in any
+Google-accessible Chrome; that page then displays **Paste this code into your
+application**. Copy that one-time code and paste it into the dialog. Hakimi
+validates the session state, sends the PKCE verifier held by the NA2H session to
+Google, exchanges the code with the matching Antigravity callback URI, and
+stores the account and tokens in the mode-0600 local config. This does not
+require `agy`, a local Google login, or a user-supplied OAuth client secret. Manual fields remain a
 headless fallback. When `project` is empty, Hakimi discovers it with
 `loadCodeAssist`. `onboardUser` changes account state and is disabled unless
 that credential explicitly sets `auto_onboard: true`. Cloud Code API endpoints
 are tried in fallback order (daily -> prod).
 
-The OAuth app client secret is an application-level setting, not an account
-refresh token. If the config already contains one Antigravity account, Hakimi
-reuses that client configuration for the browser flow. On a clean install, set
-`HAKIMI_ANTIGRAVITY_CLIENT_SECRET` once or use the manual form for the first
-account; later accounts need only browser authorization.
+Hakimi reads the application-level client ID and secret from the local config
+when present; environment overrides are also available for deployments using a
+different OAuth client. These values are not account credentials and are not
+required from the user in the Web UI. If the config already contains one
+Antigravity account, Hakimi reuses its client ID and secret for the browser
+flow.
 
 Access tokens are refreshed on demand five minutes before expiry, with a
 per-account lock to avoid duplicate refreshes. If Google rotates the refresh
@@ -351,8 +353,8 @@ a firewall, and make the proxy pass the original HTTPS scheme so FastAPI sees
 `request.url.scheme == "https"`. Do not expose port `51121`; remote OAuth mode
 does not bind it.
 
-Opening the console through its HTTPS domain automatically selects the
-listener-free OAuth flow. Credential import/export is rejected unless the
+The Web UI always uses the listener-free OOB OAuth flow. Credential
+import/export is rejected unless the
 request is genuine loopback traffic or reaches NA2H as HTTPS. Directly binding
 NA2H to `0.0.0.0` over plaintext HTTP is not a supported secret-management
 deployment.
@@ -376,7 +378,7 @@ connection. The Web UI and `/healthz` expose only the selected source
 
 ## Pricing
 
-Built-in pricing table covers Gemini models (3.7 Flash, 3.5 Flash, 2.5 Pro,
+Built-in pricing table covers Gemini models (3.8 Flash, 3.7 Flash, 3.5 Flash, 2.5 Pro,
 etc.) with per-token rates from the official pricing page. Override with
 [pricing.yaml](pricing.example.yaml).
 

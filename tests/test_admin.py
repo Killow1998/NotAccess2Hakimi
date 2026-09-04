@@ -355,7 +355,7 @@ async def test_antigravity_oauth_status_creates_credential(monkeypatch, _isolate
             return {"status": "pending", "credential_id": "", "account": "", "message": ""}
 
         def claim_code(self, state):
-            return "one-time-code", "http://localhost:51121/oauth-callback"
+            return "one-time-code", "http://localhost:51121/oauth-callback", "pkce-verifier"
 
         def complete(self, state, credential_id, account):
             self.completed = (credential_id, account)
@@ -365,8 +365,9 @@ async def test_antigravity_oauth_status_creates_credential(monkeypatch, _isolate
 
     app.state.antigravity_oauth = OAuthStub()
 
-    async def fake_exchange(code, redirect_uri, proxy, client_id, client_secret):
+    async def fake_exchange(code, redirect_uri, proxy, client_id, client_secret, code_verifier):
         assert code == "one-time-code"
+        assert code_verifier == "pkce-verifier"
         return AntigravityOAuthBundle(
             client_id="client-id",
             client_secret="client-secret",
@@ -438,7 +439,7 @@ async def test_antigravity_oauth_complete_accepts_remote_callback(monkeypatch, _
             return True
 
         def claim_code(self, state):
-            return "one-time-code", "http://localhost:51121/oauth-callback"
+            return "one-time-code", "http://localhost:51121/oauth-callback", "pkce-verifier"
 
         def complete(self, state, credential_id, account):
             self.completed = (credential_id, account)
@@ -448,8 +449,9 @@ async def test_antigravity_oauth_complete_accepts_remote_callback(monkeypatch, _
 
     app.state.antigravity_oauth = OAuthStub()
 
-    async def fake_exchange(code, redirect_uri, proxy, client_id, client_secret):
+    async def fake_exchange(code, redirect_uri, proxy, client_id, client_secret, code_verifier):
         assert code == "one-time-code"
+        assert code_verifier == "pkce-verifier"
         return AntigravityOAuthBundle(
             client_id="client-id",
             client_secret="client-secret",
@@ -565,7 +567,7 @@ async def test_antigravity_credential_connection():
 
     async def forward(body, cred, stream, client):
         assert cred.id == "ag-test"
-        assert body["model"] == "antigravity/gemini-3.7-flash-tiered"
+        assert body["model"] == "antigravity/gemini-3.8-flash"
         assert stream is False
         return httpx.Response(200, json={"response": {}})
 
@@ -579,7 +581,7 @@ async def test_antigravity_credential_connection():
     assert data["status"] == "ok"
     assert data["credential_id"] == "ag-test"
     assert data["provider"] == "antigravity"
-    assert data["model"] == "antigravity/gemini-3.7-flash-tiered"
+    assert data["model"] == "antigravity/gemini-3.8-flash"
     assert isinstance(data["latency_ms"], int)
     assert data["health"]["status"] == "healthy"
     assert [stage["name"] for stage in data["health"]["stages"]] == [

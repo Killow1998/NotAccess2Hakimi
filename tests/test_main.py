@@ -69,3 +69,37 @@ async def test_rotated_refresh_token_survives_application_restart(monkeypatch, t
 
     assert reloaded.antigravity_credentials[0].refresh_token == "rotated-refresh"
     assert config_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_application_oauth_settings_round_trip_without_exposing_values(tmp_path):
+    config_path = tmp_path / "config.yaml"
+    save_config(
+        ProxyConfig(
+            antigravity_client_id="client-id",
+            antigravity_client_secret="application-secret",
+        ),
+        config_path,
+    )
+
+    loaded = load_config(config_path)
+
+    assert loaded.antigravity_client_id == "client-id"
+    assert loaded.antigravity_client_secret == "application-secret"
+    assert config_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_create_app_uses_application_oauth_settings(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.yaml"
+    save_config(
+        ProxyConfig(
+            antigravity_client_id="client-id",
+            antigravity_client_secret="application-secret",
+        ),
+        config_path,
+    )
+    monkeypatch.setenv("HAKIMI_CONFIG", str(config_path))
+
+    app = main_module.create_app()
+
+    assert app.state.antigravity_oauth.client_id == "client-id"
+    assert app.state.antigravity_oauth.client_secret == "application-secret"

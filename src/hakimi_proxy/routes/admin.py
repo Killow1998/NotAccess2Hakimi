@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
 TEST_MODELS = {
     "aistudio": "gemini-3.7-flash",
-    "antigravity": "antigravity/gemini-3.7-flash-tiered",
+    "antigravity": "antigravity/gemini-3.8-flash",
 }
 
 
@@ -153,8 +153,11 @@ def _reload_pool(request: Request, config) -> None:
         oauth_manager.proxy = config.proxy
         oauth_credential = next(iter(config.antigravity_credentials), None)
         if oauth_credential:
-            oauth_manager.client_id = oauth_credential.client_id
-            oauth_manager.client_secret = oauth_credential.client_secret
+            oauth_manager.client_id = oauth_credential.client_id or config.antigravity_client_id or oauth_manager.client_id
+            oauth_manager.client_secret = oauth_credential.client_secret or config.antigravity_client_secret or oauth_manager.client_secret
+        else:
+            oauth_manager.client_id = config.antigravity_client_id or oauth_manager.client_id
+            oauth_manager.client_secret = config.antigravity_client_secret or oauth_manager.client_secret
     request.app.state.config = config
 
 
@@ -379,7 +382,7 @@ async def _complete_antigravity_oauth(request: Request, state: str):
     if claimed is None:
         return manager.snapshot(state) or snapshot
 
-    code, redirect_uri = claimed
+    code, redirect_uri, code_verifier = claimed
     try:
         bundle = await exchange_oauth_code(
             code,
@@ -387,6 +390,7 @@ async def _complete_antigravity_oauth(request: Request, state: str):
             manager.proxy,
             manager.client_id,
             manager.client_secret,
+            code_verifier,
         )
         config = request.app.state.config
         credential_id = _oauth_credential_id(config, bundle.account)

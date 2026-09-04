@@ -16,6 +16,11 @@ db_path: hakimi.db
 # Requires httpx[socks] for SOCKS proxies.
 proxy: ""
 
+# Optional Antigravity application OAuth settings. The Web UI does not ask
+# users to enter these; keep the secret only in the mode-0600 local config.
+# antigravity_client_id: "xxx.apps.googleusercontent.com"
+# antigravity_client_secret: "GOCSPX-xxx"
+
 # AI Studio credentials (API Key mode)
 aistudio:
   - id: acct1-proj1

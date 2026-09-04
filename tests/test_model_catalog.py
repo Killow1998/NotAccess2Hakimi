@@ -24,8 +24,19 @@ def test_discovery_catalog_is_sorted_and_complete():
 
 
 def test_antigravity_alias_is_catalog_owned():
+    assert resolve_antigravity_model("Gemini-3.8-Flash") == "gemini-3.8-flash-tiered"
+    assert resolve_antigravity_model("gemini-3.8-flash-tiered") == "gemini-3.8-flash-tiered"
     assert resolve_antigravity_model("Gemini-3.7-Flash") == "gemini-3.7-flash-tiered"
     assert resolve_antigravity_model("gemini-3.7-flash-tiered") == "gemini-3.7-flash-tiered"
+
+
+def test_gemini_38_flash_has_official_limits_and_reasoning_levels():
+    entry = next(item for item in list_model_discovery_entries() if item["id"] == "gemini-3.8-flash")
+    assert entry["context_window"] == 1_048_576
+    assert entry["max_input_tokens"] == 1_048_576
+    assert entry["output_limit"] == 65_536
+    assert entry["reasoning_levels"] == ["low", "medium", "high"]
+    assert entry["capability_sources"]["context_window"]["source"] == "official"
 
 
 def test_unknown_model_limits_are_not_fabricated():

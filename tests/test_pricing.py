@@ -12,6 +12,15 @@ def test_gemini_37_flash_pricing():
     assert abs(p.output_cost_per_token - 3.75 / 1_000_000) < 1e-15
 
 
+def test_gemini_38_flash_pricing_and_tiered_alias():
+    p = get_pricing("gemini-3.8-flash")
+    tiered = get_pricing("antigravity/gemini-3.8-flash-tiered")
+    assert p is not None
+    assert tiered is p
+    assert abs(p.input_cost_per_token - 0.75 / 1_000_000) < 1e-15
+    assert abs(p.output_cost_per_token - 3.75 / 1_000_000) < 1e-15
+
+
 def test_compute_cost_basic():
     """1000 input + 500 output tokens for gemini-3.7-flash."""
     p = get_pricing("gemini-3.7-flash")
@@ -63,7 +72,7 @@ def test_tiered_antigravity_model_uses_canonical_pricing():
 
 def test_builtin_pricing_covers_key_models():
     """Ensure key models are in the built-in pricing table."""
-    expected = {"gemini-3.7-flash", "gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.1-pro-preview"}
+    expected = {"gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.1-pro-preview"}
     assert expected.issubset(BUILTIN_PRICING.keys())
 
 

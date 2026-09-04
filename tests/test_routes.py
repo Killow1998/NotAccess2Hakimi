@@ -126,7 +126,10 @@ async def test_authenticated_root_stays_public():
     assert "EasyMultiProvider" not in resp.text
     assert "模型与 EMP 集成" not in resp.text
     assert "+ Antigravity 登录" in resp.text
-    assert "const localHosts = new Set(['localhost', '127.0.0.1', '::1'])" in resp.text
+    assert "const mode = 'remote'" in resp.text
+    assert "const localHosts = new Set(['localhost', '127.0.0.1', '::1'])" not in resp.text
+    assert "Google 会显示“Paste this code into your application”" in resp.text
+    assert "复制页面显示的 code 并粘贴回来" in resp.text
     assert "凭证迁移" in resp.text
     assert "exportCredentials" in resp.text
     assert "previewCredentialImport" in resp.text
@@ -153,6 +156,10 @@ async def test_list_models():
     assert data["object"] == "list"
     model_ids = [m["id"] for m in data["data"]]
     assert "gemini-3.7-flash" in model_ids
+    assert "gemini-3.8-flash" in model_ids
+    flash_38 = next(m for m in data["data"] if m["id"] == "gemini-3.8-flash")
+    assert flash_38["context_window"] == 1_048_576
+    assert flash_38["output_limit"] == 65_536
     tiered = next(m for m in data["data"] if m["id"] == "gemini-3.7-flash-tiered")
     assert tiered["context_window"] == 1_048_576
     assert tiered["max_input_tokens"] == 1_048_576

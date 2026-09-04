@@ -395,9 +395,11 @@ async function refreshAll() {
 function recommendedModel() {
   const ids = new Set((state.models || []).map(model => model.id));
   if ((state.credentials.antigravity || []).length) {
-    const id = ids.has('gemini-3.7-flash-tiered') ? 'gemini-3.7-flash-tiered' : 'gemini-3.7-flash';
+    const id = ['gemini-3.8-flash-tiered', 'gemini-3.8-flash', 'gemini-3.7-flash-tiered', 'gemini-3.7-flash']
+      .find(candidate => ids.has(candidate)) || 'gemini-3.8-flash-tiered';
     return `antigravity/${id}`;
   }
+  if (ids.has('gemini-3.8-flash')) return 'gemini-3.8-flash';
   if (ids.has('gemini-3.7-flash')) return 'gemini-3.7-flash';
   return state.models?.[0]?.id || 'gemini-2.5-flash';
 }
@@ -600,15 +602,16 @@ function verificationResultMessage(result) {
 
 async function startAntigravityOAuth() {
   try {
-    const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
-    const mode = localHosts.has(window.location.hostname) ? 'local' : 'remote';
+    // Always use the listener-free flow so Google login can happen on any
+    // Google-accessible device, including when NA2H itself is local.
+    const mode = 'remote';
     const session = await api('POST', '/api/credentials/antigravity/oauth/start', { mode });
     oauthSession = session;
     openAntigravityOAuthModal(session);
     const popup = window.open(session.authorization_url, '_blank', 'noopener,noreferrer');
     if (!popup) oauthStatus(tr('浏览器阻止了新窗口；请点击“打开授权链接”或复制到任意 Chrome。', 'The browser blocked the new window. Click Open authorization link or copy it into any Chrome browser.'));
     else if (session.mode === 'local') oauthStatus(tr('已打开 Google 登录页；本机回调成功后会自动完成。', 'The Google sign-in page is open. A successful local callback will complete automatically.'));
-    else oauthStatus(tr('已打开 Google 登录页；完成后请粘贴地址栏里的回调 URL。', 'The Google sign-in page is open. When finished, paste the callback URL from the address bar.'));
+    else oauthStatus(tr('已打开 Google 登录页；完成后请复制页面显示的 code 并粘贴回来。', 'The Google sign-in page is open. When finished, copy the code shown by Google and paste it here.'));
     if (session.mode === 'local') pollAntigravityOAuth(session);
   } catch (error) { toast(error.message, 'error'); }
 }
@@ -616,10 +619,10 @@ async function startAntigravityOAuth() {
 function openAntigravityOAuthModal(session) {
   const remote = session.mode === 'remote';
   document.getElementById('modalContent').innerHTML = `<h2 id="modalTitle">${tr('Antigravity 登录', 'Antigravity sign-in')}</h2>
-    <p class="modal-note">${remote ? tr('请在任意 Chrome 完成登录；跳转 localhost 后即使连接失败，也要复制地址栏完整 URL 并粘贴回来。', 'Complete sign-in in any Chrome browser. After the localhost redirect, copy the complete address-bar URL and paste it here even if the page cannot connect.') : tr('完成 Google 登录后会自动回填；如果没有自动完成，也可以粘贴浏览器地址栏里的完整回调 URL。', 'Google sign-in completes automatically. If it does not, paste the complete callback URL from the browser address bar.')}</p>
-    <div class="form-group"><label for="oauthUrl">${tr('授权链接', 'Authorization link')}</label><textarea id="oauthUrl" readonly>${esc(session.authorization_url)}</textarea><div class="secret-note">${tr('回调地址：', 'Callback URL: ')}${esc(session.redirect_uri || 'http://localhost:51121/oauth-callback')}</div></div>
+    <p class="modal-note">${remote ? tr('请在任意可访问 Google 的 Chrome 完成登录；成功后 Google 会显示“Paste this code into your application”，复制该 code 并粘贴回来。', 'Complete sign-in in any Chrome browser that can access Google. Google will then show “Paste this code into your application”; copy that code and paste it here.') : tr('完成 Google 登录后会自动回填；如果没有自动完成，也可以粘贴浏览器地址栏里的完整回调 URL。', 'Google sign-in completes automatically. If it does not, paste the complete callback URL from the browser address bar.')}</p>
+    <div class="form-group"><label for="oauthUrl">${tr('授权链接', 'Authorization link')}</label><textarea id="oauthUrl" readonly>${esc(session.authorization_url)}</textarea><div class="secret-note">${tr('授权结果：', 'Authorization result: ')}${esc(session.redirect_uri || 'http://localhost:51121/oauth-callback')}</div></div>
     <div class="form-actions"><button class="btn-ghost" onclick="copyOAuthUrl()">${tr('复制链接', 'Copy link')}</button><button class="btn-ghost" onclick="openOAuthUrl()">${tr('打开授权链接', 'Open authorization link')}</button></div>
-    <div class="form-group"><label for="oauthResult">${tr('授权结果（完整回调 URL 或 OAuth code）', 'Authorization result (complete callback URL or OAuth code)')}</label><textarea id="oauthResult" placeholder="${esc(session.redirect_uri || 'http://localhost:51121/oauth-callback')}?code=...&state=..."></textarea></div>
+    <div class="form-group"><label for="oauthResult">${tr(remote ? '授权结果（Google 显示的 OAuth code）' : '授权结果（完整回调 URL 或 OAuth code）', remote ? 'Authorization result (OAuth code shown by Google)' : 'Authorization result (complete callback URL or OAuth code)')}</label><textarea id="oauthResult" placeholder="${esc(remote ? '4/...（从 Google 页面复制）' : `${session.redirect_uri || 'http://localhost:51121/oauth-callback'}?code=...&state=...`)}"></textarea></div>
     <div class="modal-status" id="oauthStatus" role="alert">${tr('等待 Google 授权…', 'Waiting for Google authorization…')}</div>
     <div class="form-actions"><button class="btn-ghost" onclick="closeModal()">${tr('取消', 'Cancel')}</button><button class="btn-blue" id="oauthComplete" onclick="submitAntigravityOAuth()">${tr('完成登录', 'Complete sign-in')}</button></div>`;
   document.getElementById('modalOverlay').classList.add('show');
