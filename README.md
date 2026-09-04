@@ -164,6 +164,12 @@ route. The adapter resolves the 3.8 display alias to the tiered transport ID;
 the equivalent 3.7 aliases remain supported. `gemini-3.6-flash-high` is a
 separate catalog model, not an automatic alias for 3.8.
 
+`GET /v1/models` is provider-aware: it exposes the AI Studio catalog only when
+an AI Studio credential is configured, the Antigravity catalog only when an
+Antigravity credential is configured, and their union when both are configured.
+It is a configured-provider catalog rather than a live per-account quota list;
+upstream availability and quota can still vary by account.
+
 ### v0.6.0 boundary
 
 This release targets a trusted local operator and one Uvicorn worker. Each

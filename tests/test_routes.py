@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import httpx
 from httpx2 import ASGITransport, AsyncClient
 
-from hakimi_proxy.config import AIStudioCredential, ProxyConfig
+from hakimi_proxy.config import AIStudioCredential, AntigravityCredential, ProxyConfig
 from hakimi_proxy.main import create_app
 from hakimi_proxy.pool import CredentialPool
 from hakimi_proxy.adapters.aistudio import AIStudioAdapter
@@ -17,6 +17,7 @@ from hakimi_proxy.adapters.antigravity import AntigravityAdapter
 from hakimi_proxy.metering.models import TokenBreakdown, UsageRecord
 from hakimi_proxy.metering.store import UsageStore
 from hakimi_proxy.routes.chat import _run_chat_completion
+from hakimi_proxy.model_catalog import AISTUDIO_MODELS, ALL_MODELS
 
 
 def _make_app_with_state():
@@ -150,6 +151,12 @@ async def test_authenticated_root_stays_public():
 
 async def test_list_models():
     app = _make_app_with_state()
+    app.state.pool.add_antigravity(AntigravityCredential(
+        id="test-ag",
+        client_id="client-id",
+        client_secret="client-secret",
+        refresh_token="refresh-token",
+    ))
     resp = await _request(app, "GET", "/v1/models")
     assert resp.status_code == 200
     data = resp.json()
@@ -174,8 +181,51 @@ async def test_list_models():
     assert tiered["capability_sources"]["context_window"]["source"] == "observed"
 
 
+async def test_list_models_filters_to_configured_provider_catalog():
+    app = _make_app_with_state()
+
+    resp = await _request(app, "GET", "/v1/models")
+
+    assert resp.status_code == 200
+    model_ids = {model["id"] for model in resp.json()["data"]}
+    assert model_ids == set(AISTUDIO_MODELS)
+    assert "gemini-3.5-flash-lite" in model_ids
+    assert "gemini-3.8-flash-tiered" not in model_ids
+
+
+async def test_list_models_returns_union_when_both_providers_are_configured():
+    app = _make_app_with_state()
+    app.state.pool.add_antigravity(AntigravityCredential(
+        id="test-ag",
+        client_id="client-id",
+        client_secret="client-secret",
+        refresh_token="refresh-token",
+    ))
+
+    resp = await _request(app, "GET", "/v1/models")
+
+    assert resp.status_code == 200
+    assert {model["id"] for model in resp.json()["data"]} == set(ALL_MODELS)
+
+
+async def test_list_models_is_empty_without_configured_providers():
+    app = _make_app_with_state()
+    app.state.pool = CredentialPool()
+
+    resp = await _request(app, "GET", "/v1/models")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"object": "list", "data": []}
+
+
 async def test_get_model_returns_catalog_entry_or_404():
     app = _make_app_with_state()
+    app.state.pool.add_antigravity(AntigravityCredential(
+        id="test-ag",
+        client_id="client-id",
+        client_secret="client-secret",
+        refresh_token="refresh-token",
+    ))
     resp = await _request(app, "GET", "/v1/models/gemini-3.7-flash-tiered")
     assert resp.status_code == 200
     assert resp.json()["context_window"] == 1_048_576
@@ -183,6 +233,15 @@ async def test_get_model_returns_catalog_entry_or_404():
     missing = await _request(app, "GET", "/v1/models/not-a-model")
     assert missing.status_code == 404
     assert missing.json()["error"]["type"] == "not_found_error"
+
+
+async def test_get_model_hides_unconfigured_provider_model():
+    app = _make_app_with_state()
+
+    resp = await _request(app, "GET", "/v1/models/gemini-3.8-flash-tiered")
+
+    assert resp.status_code == 404
+    assert resp.json()["error"]["type"] == "not_found_error"
 
 
 async def test_credentials_status():

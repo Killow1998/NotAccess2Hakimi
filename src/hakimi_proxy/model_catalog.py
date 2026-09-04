@@ -204,6 +204,17 @@ def model_discovery_entry(model_id: str) -> dict[str, Any]:
     return entry
 
 
-def list_model_discovery_entries() -> list[dict[str, Any]]:
-    """Return the stable, sorted model discovery catalog."""
-    return [model_discovery_entry(model_id) for model_id in sorted(ALL_MODELS)]
+def model_ids_for_providers(*, aistudio: bool, antigravity: bool) -> frozenset[str]:
+    """Return only the catalog exposed by the configured providers."""
+    model_ids: set[str] = set()
+    if aistudio:
+        model_ids.update(AISTUDIO_MODELS)
+    if antigravity:
+        model_ids.update(ANTIGRAVITY_MODELS)
+    return frozenset(model_ids)
+
+
+def list_model_discovery_entries(*, aistudio: bool = True, antigravity: bool = True) -> list[dict[str, Any]]:
+    """Return a stable, sorted discovery catalog for selected providers."""
+    model_ids = model_ids_for_providers(aistudio=aistudio, antigravity=antigravity)
+    return [model_discovery_entry(model_id) for model_id in sorted(model_ids)]
