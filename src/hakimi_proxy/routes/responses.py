@@ -14,6 +14,20 @@ from hakimi_proxy.routes.chat import _run_chat_completion
 
 router = APIRouter()
 
+
+def _termination(reason: str | None, error: dict | None = None) -> dict[str, Any]:
+    """Keep upstream completion evidence distinct from truncation and failure."""
+    if error is not None or reason not in {"stop", "tool_calls", "length", "content_filter"}:
+        return {"status": "failed", "error": {
+            "code": "server_error",
+            "message": "Upstream failed or ended without a valid finish reason",
+        }}
+    if reason in {"length", "content_filter"}:
+        return {"status": "incomplete", "incomplete_details": {
+            "reason": "max_output_tokens" if reason == "length" else "content_filter",
+        }}
+    return {"status": "completed"}
+
 _CUSTOM_TOOL_PARAMETERS = {
     "type": "object",
     "properties": {"input": {"type": "string"}},
@@ -133,7 +147,7 @@ def _reasoning_signature(value: Any) -> str:
     if not isinstance(value, dict):
         return ""
     signature = value.get("encrypted_content")
-    return signature.strip() if isinstance(signature, str) else ""
+    return signature if isinstance(signature, str) else ""
 
 
 def _reasoning_item(signature: str, summary: str = "") -> dict[str, Any]:
@@ -183,8 +197,10 @@ def _tool_registry(body: dict[str, Any]) -> tuple[list[dict[str, Any]], set[str]
         kind = item.get("type")
         function = item.get("function", item)
         name = function.get("name")
-        if not isinstance(name, str) or not name or name in seen:
-            continue
+        if not isinstance(name, str) or not name:
+            raise ValueError("Tool declarations require a non-empty name")
+        if name in seen:
+            raise ValueError("Duplicate tool names across declarations or namespaces are unsupported")
         seen.add(name)
         if kind == "custom":
             custom_names.add(name)
@@ -471,6 +487,10 @@ def _chat_to_response(
     }
     if isinstance(value.get("usage"), dict):
         response["usage"] = _chat_usage_to_response(value["usage"])
+    response.update(_termination(choices[0].get("finish_reason")))
+    if response["status"] != "completed":
+        for item in output:
+            item["status"] = "incomplete"
     return response
 
 
@@ -508,12 +528,26 @@ def _response_stream(
         tool_states: dict[int, dict[str, Any]] = {}
         usage: dict[str, Any] | None = None
         stream_error: dict[str, Any] | None = None
+        finish_reason: str | None = None
         buffer = ""
 
         def frame(event: str, value: dict[str, Any]) -> bytes:
             nonlocal sequence
             sequence += 1
             return _response_frame(event, value, sequence)
+
+        def preserve_partial_output():
+            if text_item is not None:
+                text_item["status"] = "incomplete"
+                text_item["content"] = [{"type": "output_text", "text": "".join(text_parts), "annotations": []}]
+            for state in tool_states.values():
+                state["item"]["status"] = "incomplete"
+                state["item"]["input" if state["custom"] else "arguments"] = (
+                    _custom_tool_input(state["arguments"]) if state["custom"] else state["arguments"]
+                )
+            response["output_text"] = "".join(text_parts)
+            if usage is not None:
+                response["usage"] = usage
 
         def output_index(item: dict[str, Any], outputs: list[dict[str, Any]] | None = None) -> int:
             source = response["output"] if outputs is None else outputs
@@ -523,7 +557,6 @@ def _response_stream(
             return -1
 
         def add_reasoning_carrier(signature: str) -> tuple[int, dict[str, Any]] | None:
-            signature = signature.strip()
             if not signature:
                 return None
             item = _reasoning_item(signature)
@@ -582,7 +615,7 @@ def _response_stream(
             return state
 
         async def consume(raw: bytes | str):
-            nonlocal buffer, usage, stream_error
+            nonlocal buffer, usage, stream_error, finish_reason
             buffer += raw.decode("utf-8") if isinstance(raw, bytes) else raw
             while "\n\n" in buffer:
                 event, buffer = buffer.split("\n\n", 1)
@@ -602,6 +635,8 @@ def _response_stream(
                     if isinstance(chunk.get("usage"), dict):
                         usage = _chat_usage_to_response(chunk["usage"])
                     choices = chunk.get("choices") or []
+                    if choices and choices[0].get("finish_reason") is not None:
+                        finish_reason = choices[0]["finish_reason"]
                     delta = choices[0].get("delta", {}) if choices else {}
                     for signature in _thought_signatures(delta):
                         carrier = add_reasoning_carrier(signature)
@@ -695,6 +730,11 @@ def _response_stream(
                 async for event in consume("\n\n"):
                     yield event
 
+            terminal = _termination(finish_reason, stream_error)
+            if terminal["status"] != "completed":
+                response.update(terminal)
+                preserve_partial_output()
+                yield frame("response." + terminal["status"], {"response": response})
             if stream_error:
                 yield frame(
                     "error",
@@ -703,6 +743,8 @@ def _response_stream(
                         "error": stream_error,
                     },
                 )
+                return
+            if terminal["status"] != "completed":
                 return
 
             outputs: list[dict[str, Any]] = list(response["output"])
@@ -760,7 +802,10 @@ def _response_stream(
                 response["usage"] = usage
             yield frame("response.completed", {"response": response})
         except Exception as exc:
-            yield frame("error", {"message": f"Responses stream failed: {type(exc).__name__}: {exc}"})
+            response.update(_termination(None))
+            preserve_partial_output()
+            yield frame("response.failed", {"response": response})
+            yield frame("error", {"message": f"Responses stream failed: {type(exc).__name__}"})
         finally:
             close = getattr(chat_response.body_iterator, "aclose", None)
             if close:
@@ -783,8 +828,13 @@ async def _run_responses(
     provider: str | None = None,
 ):
     """Run the Responses facade, optionally pinned by an internal caller."""
-    chat_body = responses_to_chat(body)
-    custom_tool_names = _custom_tool_names(body)
+    try:
+        chat_body = responses_to_chat(body)
+        custom_tool_names = _custom_tool_names(body)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": {
+            "type": "invalid_request_error", "message": str(exc),
+        }})
     result = await _run_chat_completion(
         request,
         chat_body,

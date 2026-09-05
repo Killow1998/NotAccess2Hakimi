@@ -48,9 +48,37 @@ def _record_usage(store, cred: PooledCredential, model: str, adapter: UpstreamAd
     """Build a UsageRecord and persist it."""
     if not usage:
         return
-    rec = UsageRecord.from_openai_usage(credential_id=cred.id, model=model, upstream=adapter.kind, usage=usage)
-    rec.cost_usd = compute_cost_for_model(model, rec.tokens)
-    store.record(rec)
+    try:
+        rec = UsageRecord.from_openai_usage(credential_id=cred.id, model=model, upstream=adapter.kind, usage=usage)
+        rec.cost_usd = compute_cost_for_model(model, rec.tokens)
+        store.record(rec)
+    except Exception as exc:
+        logger.error("Usage recording failed (%s)", type(exc).__name__)
+
+
+async def _cleanup(resp, client, pool, cred) -> None:
+    """Attempt every cleanup operation; preserve cancellation after cleanup."""
+    async def close_all():
+        cancellation = None
+        for resource in (resp, client):
+            if resource is not None:
+                try:
+                    await resource.aclose()
+                except asyncio.CancelledError as exc:
+                    cancellation = exc
+                except Exception as exc:
+                    logger.error("Upstream close failed (%s)", type(exc).__name__)
+        if pool is not None:
+            await pool.release(cred)
+        if cancellation is not None:
+            raise cancellation
+
+    task = asyncio.create_task(close_all())
+    try:
+        await asyncio.shield(task)
+    except asyncio.CancelledError:
+        await task
+        raise
 
 
 @router.post("/v1/chat/completions")
@@ -107,24 +135,23 @@ async def _run_chat_completion(
 
         started = time.perf_counter()
         proxy_url = request.app.state.config.proxy or None
-        client = request.app.state.upstream_client_factory(proxy_url)
+        client = None
         resp: httpx.Response | None = None
+        stream_owns_resources = False
         try:
+            client = request.app.state.upstream_client_factory(proxy_url)
             resp = await adapter.forward(body, cred, stream, client)
             if resp.status_code != 200:
                 failure = await classify_streaming_response(resp)
                 _apply_failure(pool, cred, failure, model, started)
                 last_failure = failure
-                await resp.aclose()
-                await client.aclose()
-                await pool.release(cred)
                 if failure.retryable or failure.credential_action != "none":
                     continue
                 return _failure_response(failure, 502 if failure.type != "proxy_error" else 500)
 
             if stream:
                 stream_iter, prefetched_lines = await _prepare_stream(resp, adapter)
-                return _stream_response(
+                result = _stream_response(
                     resp,
                     adapter,
                     cred,
@@ -136,31 +163,25 @@ async def _run_chat_completion(
                     pool=pool,
                     started_at=started,
                 )
+                stream_owns_resources = True
+                return result
 
             resp_body = await _non_stream_response(resp, adapter, cred, model, store)
             pool.mark_success(cred, latency_ms=_latency_ms(started), model=model)
-            await resp.aclose()
-            await client.aclose()
-            await pool.release(cred)
             return resp_body
         except asyncio.CancelledError:
-            if resp is not None:
-                await resp.aclose()
-            await client.aclose()
-            await pool.release(cred)
             raise
         except Exception as exc:
             failure = classify_exception(exc)
             logger.warning("Request to %s failed: %s", cred.id, failure.message)
             _apply_failure(pool, cred, failure, model, started)
             last_failure = failure
-            if resp is not None:
-                await resp.aclose()
-            await client.aclose()
-            await pool.release(cred)
             if failure.retryable or failure.credential_action != "none":
                 continue
             return _failure_response(failure, 502 if failure.type != "proxy_error" else 500)
+        finally:
+            if not stream_owns_resources:
+                await _cleanup(resp, client, pool, cred)
 
     return _failure_response(last_failure, 503)
 
@@ -211,8 +232,10 @@ async def _acquire_for_request(
             if exc.reason == "busy_timeout":
                 busy.append(candidate)
 
-    remaining = max(0.0, deadline - time.monotonic())
     for candidate in busy:
+        remaining = max(0.0, deadline - time.monotonic())
+        if remaining <= 0:
+            break
         try:
             return candidate, await pool.acquire(kind=candidate.kind, timeout_seconds=remaining)
         except CredentialUnavailable:
@@ -236,7 +259,9 @@ async def _non_stream_response(resp: httpx.Response, adapter: UpstreamAdapter, c
         body = raw_body
         usage = adapter.extract_usage(body)
 
-    if not _has_usable_output(body):
+    choices = body.get("choices") or []
+    terminal_empty = bool(choices and choices[0].get("finish_reason") in {"length", "content_filter"})
+    if not _has_usable_output(body) and not terminal_empty:
         raise UpstreamError(UpstreamFailure("empty_upstream_response", "Upstream returned no text, reasoning, or tool call"))
 
     _record_usage(store, cred, model, adapter, usage)
@@ -270,6 +295,8 @@ async def _prepare_stream(resp: httpx.Response, adapter: UpstreamAdapter) -> tup
             if saw_meaningful:
                 return stream_iter, prefetched
             if choice.get("finish_reason"):
+                if choice["finish_reason"] in {"length", "content_filter"}:
+                    return stream_iter, prefetched
                 raise UpstreamError(UpstreamFailure("empty_upstream_response", "Upstream stream finished without usable output"))
     except (asyncio.CancelledError, UpstreamError):
         raise
@@ -345,6 +372,10 @@ def _stream_response(
                     saw_upstream_event = True
                     try:
                         chunk = json.loads(transformed)
+                        if chunk.get("error"):
+                            raise UpstreamError(UpstreamFailure(
+                                "upstream_error", "Upstream reported a stream error"
+                            ))
                         if adapter.kind == "antigravity":
                             chunk["id"] = chunk_id
                             chunk["model"] = model
@@ -358,14 +389,9 @@ def _stream_response(
                     yield f"data: {transformed}\n\n"
 
             if not saw_finish_reason:
-                final = {
-                    "id": chunk_id,
-                    "object": "chat.completion.chunk",
-                    "created": int(time.time()),
-                    "model": model,
-                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-                }
-                yield f"data: {json.dumps(final)}\n\n"
+                raise UpstreamError(UpstreamFailure(
+                    "upstream_incomplete_response", "Upstream ended without a finish reason"
+                ))
             yield "data: [DONE]\n\n"
             if pool is not None:
                 pool.mark_success(cred, latency_ms=_latency_ms(started_at or time.perf_counter()), model=model)
@@ -387,11 +413,10 @@ def _stream_response(
             yield f"data: {json.dumps(error)}\n\n"
             yield "data: [DONE]\n\n"
         finally:
-            if captured_usage:
-                _record_usage(store, cred, model, adapter, captured_usage)
-            await resp.aclose()
-            await client.aclose()
-            if pool is not None:
-                await pool.release(cred)
+            try:
+                if captured_usage:
+                    _record_usage(store, cred, model, adapter, captured_usage)
+            finally:
+                await _cleanup(resp, client, pool, cred)
 
     return StreamingResponse(generate(), media_type="text/event-stream")

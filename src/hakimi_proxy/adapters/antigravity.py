@@ -269,7 +269,7 @@ def _gemini_to_openai(gemini_body: dict, model: str) -> dict:
     inner = gemini_body.get("response", gemini_body)
     candidates = inner.get("candidates", [])
     text = ""
-    finish_reason = "stop"
+    finish_reason = None
     message: dict = {"role": "assistant", "content": ""}
     if candidates:
         first = candidates[0]
@@ -302,7 +302,7 @@ def _gemini_to_openai(gemini_body: dict, model: str) -> dict:
             message["extra_content"] = {"google": {"thought_signature": message_signature}}
         if detached_signatures:
             message["na2h_thought_signatures"] = detached_signatures
-        fr = first.get("finishReason", "STOP")
+        fr = first.get("finishReason")
         finish_reason = _finish_reason(fr, bool(tool_calls))
 
     return {
@@ -383,11 +383,9 @@ def _gemini_chunk_to_openai_chunk(gemini_data: dict, model: str, chunk_id: str) 
     return json.dumps(chunk), usage
 
 
-def _finish_reason(reason: str | None, has_tool_calls: bool, default: str | None = "stop") -> str | None:
-    if has_tool_calls:
-        return "tool_calls"
+def _finish_reason(reason: str | None, has_tool_calls: bool, default: str | None = None) -> str | None:
     return {
-        "STOP": "stop",
+        "STOP": "tool_calls" if has_tool_calls else "stop",
         "MAX_TOKENS": "length",
         "SAFETY": "content_filter",
         "RECITATION": "content_filter",
