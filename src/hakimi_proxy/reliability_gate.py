@@ -385,13 +385,16 @@ async def run_gate(*, requests: int = 500, concurrency: int = 8) -> dict[str, An
         with tempfile.TemporaryDirectory(prefix="na2h-reliability-") as temp_dir:
             root = Path(temp_dir)
             os.chdir(root)
-            result: dict[str, Any] = {
-                "requests": requests,
-                "concurrency": concurrency,
-                **await _success_load(root, requests, concurrency),
-                "faults": await _fault_matrix(root),
-                "agent_tool_round_trip": await _agent_tool_round_trip(root),
-            }
+            try:
+                result: dict[str, Any] = {
+                    "requests": requests,
+                    "concurrency": concurrency,
+                    **await _success_load(root, requests, concurrency),
+                    "faults": await _fault_matrix(root),
+                    "agent_tool_round_trip": await _agent_tool_round_trip(root),
+                }
+            finally:
+                os.chdir(previous_cwd)
     finally:
         os.chdir(previous_cwd)
         if previous_config is None:

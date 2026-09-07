@@ -142,6 +142,22 @@ budget internally, so very small limits such as 32 may yield no visible text.
 
 ## Client Configuration
 
+### Protocol reliability
+
+Usage-recording failures are logged independently of upstream success and cannot
+prevent connection cleanup or account lease release. Close failures do not skip
+the remaining cleanup operations. Busy providers share one monotonic wait deadline.
+
+Responses distinguishes normal completion from output-limit/content-filter
+incompleteness and upstream failure. EOF without a finish reason is a failure;
+the proxy does not synthesize a successful stop. Partial tool arguments are not
+finalized on incomplete or failed streams, and started streams are not replayed.
+Gemini thought signatures remain opaque across tool-call history conversion.
+
+Tool declarations must have unique names across namespaces and additional tools.
+Duplicate names return HTTP 400 before contacting upstream instead of silently
+dropping a declaration. Full reversible namespace mapping is not implemented yet.
+
 Point any OpenAI-compatible client at the proxy:
 
 ```bash
