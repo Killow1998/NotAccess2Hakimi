@@ -256,6 +256,15 @@ tr:last-child td { border-bottom: 0; }
     <div class="table-wrap" id="usageTable"></div>
   </section>
 
+  <section class="panel" id="sharing">
+    <details><summary data-zh="用户与远程上游" data-en="Users and remote upstreams">用户与远程上游</summary>
+      <div class="panel-header"><h3 data-zh="用户密钥" data-en="User keys">用户密钥</h3><button class="btn-ghost" onclick="editUserKey()" data-zh="创建密钥" data-en="Create key">创建密钥</button></div>
+      <div class="table-wrap" id="userKeyList"></div>
+      <div class="panel-header"><h3 data-zh="远程上游" data-en="Remote upstreams">远程上游</h3><button class="btn-ghost" onclick="editRemote()" data-zh="添加上游" data-en="Add upstream">添加上游</button></div>
+      <div class="table-wrap" id="remoteList"></div>
+    </details>
+  </section>
+
   <section class="panel" id="settings">
     <details id="settingsDetails">
       <summary data-zh="设置（部分变更需要重启）" data-en="Settings (some changes require restart)">设置（部分变更需要重启）</summary>
@@ -343,7 +352,7 @@ async function api(method, path, body) {
   const response = await fetch(path, options);
   if (response.status === 401) { showLogin(); const error = new Error(tr('未授权', 'Unauthorized')); error.code = 'unauthorized'; throw error; }
   const data = await response.json();
-  if (!response.ok) { const error = new Error(data.error?.message || tr('请求失败', 'Request failed')); error.data = data; throw error; }
+  if (!response.ok) { const detail = Array.isArray(data.detail) ? data.detail.map(d => `${d.loc?.slice(1).join('.')}: ${d.msg}`).join('; ') : data.detail; const error = new Error(data.error?.message || detail || tr('请求失败', 'Request failed')); error.data = data; throw error; }
   return data;
 }
 
@@ -389,6 +398,7 @@ async function refreshAll() {
     ]);
     state.health = health; state.credentials = credentials; state.usage = usage; state.models = models.data || [];
     renderHealth(); renderCredentials(); renderUsage(); renderOnboarding();
+    await loadSharing();
     document.getElementById('endpoint').textContent = `OpenAI Base URL: ${window.location.origin}/v1`;
   } catch (error) { toast(error.message, 'error'); }
 }
@@ -781,7 +791,7 @@ function openCredentialModal(kind, id = '') {
   document.getElementById('modalOverlay').classList.add('show');
   document.getElementById('mId').focus();
 }
-function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); }
+function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); for (const id of ['createdUserKey','rmKey']) { const input=document.getElementById(id); if(input) input.value=''; } }
 document.getElementById('modalOverlay').addEventListener('click', event => { if (event.target === event.currentTarget) closeModal(); });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeModal(); });
 function value(id) { return document.getElementById(id).value.trim(); }
@@ -942,6 +952,59 @@ async function saveSettings() {
   } catch (error) { toast(error.message, 'error'); }
 }
 
+let userKeys = [], remoteEntries = [];
+async function loadSharing() {
+  const [keys, remotes] = await Promise.all([api('GET', '/api/user-keys'), api('GET', '/api/remotes')]);
+  userKeys = keys.keys; remoteEntries = remotes.remotes;
+  document.getElementById('userKeyList').innerHTML = tableHtml([tr('名称','Name'), tr('状态','Status'), tr('限制','Limits'), tr('操作','Actions')], userKeys.map((k, i) => [esc(k.name), k.enabled ? tr('启用','Enabled') : tr('禁用','Disabled'), `${k.concurrency} ${tr('并发','concurrent')} · ${k.requests_per_minute}/min · ${k.requests_per_day}/day`, `<button class="btn-ghost" onclick="editUserKey(${i})">${tr('编辑','Edit')}</button> <button class="btn-ghost" onclick="showUserUsage(${i})">${tr('用量','Usage')}</button>`]));
+  document.getElementById('remoteList').innerHTML = tableHtml(['ID', tr('组','Group'), 'Base URL', tr('操作','Actions')], remoteEntries.map((r, i) => [esc(r.id), esc(r.group), esc(r.base_url), `<button class="btn-ghost" onclick="editRemote(${i})">${tr('编辑','Edit')}</button> <button class="btn-ghost" onclick="deleteRemote(${i})">${tr('删除','Delete')}</button>`]));
+  if (!userKeys.length) document.getElementById('userKeyList').textContent=tr('尚未创建用户密钥','No user keys yet');
+  if (!remoteEntries.length) document.getElementById('remoteList').textContent=tr('尚未添加远程上游','No remote upstreams yet');
+}
+function sharingModal(title, html) {
+  document.getElementById('modalContent').innerHTML = `<h2 id="modalTitle">${esc(title)}</h2>${html}<div id="modalStatus" role="alert"></div>`;
+  document.getElementById('modalOverlay').classList.add('show');
+}
+function editUserKey(index) {
+  const k = userKeys[index] || {name:'', models:[], concurrency:2, requests_per_minute:30, requests_per_day:1000, enabled:true};
+  sharingModal(tr('用户密钥','User key'), `<div class="form-group"><label for="ukName">${tr('名称','Name')}</label><input id="ukName"></div><div class="form-group"><label for="ukModels">${tr('允许的模型（每行一个，留空允许全部）','Allowed models (one per line; empty allows all)')}</label><textarea id="ukModels"></textarea></div><div class="form-grid">${[['ukConcurrency',tr('最大并发','Concurrent requests')],['ukMinute',tr('每分钟请求','Requests per minute')],['ukDay',tr('每天请求（UTC）','Requests per day (UTC)')]].map(([id,label])=>`<div class="form-group"><label for="${id}">${label}</label><input id="${id}" type="number" min="1"></div>`).join('')}</div><label class="checkbox"><input id="ukEnabled" type="checkbox"> ${tr('启用','Enabled')}</label><div class="form-actions"><button class="btn-ghost" onclick="closeModal()">${tr('取消','Cancel')}</button><button class="btn-primary" onclick="saveUserKey(${Number.isInteger(index)?index:-1})">${tr('保存','Save')}</button></div>`);
+  for(const [id,v] of Object.entries({ukName:k.name,ukModels:k.models.join('\n'),ukConcurrency:k.concurrency,ukMinute:k.requests_per_minute,ukDay:k.requests_per_day})) document.getElementById(id).value=v;
+  document.getElementById('ukEnabled').checked=k.enabled;
+}
+async function saveUserKey(index) {
+  try {
+    const body={name:value('ukName'),models:value('ukModels').split('\n').map(s=>s.trim()).filter(Boolean),concurrency:Number(value('ukConcurrency')),requests_per_minute:Number(value('ukMinute')),requests_per_day:Number(value('ukDay')),enabled:document.getElementById('ukEnabled').checked};
+    const result=await api(index<0?'POST':'PUT',index<0?'/api/user-keys':`/api/user-keys/${userKeys[index].id}`,body);
+    if(result.api_key) {
+      sharingModal(tr('密钥已创建','Key created'), `<p>${tr('请现在复制，关闭后不再显示。','Copy now; this key will not be shown again.')}</p><div class="form-group"><input id="createdUserKey" readonly></div><button class="btn-primary" onclick="closeModal()">${tr('完成','Done')}</button>`);
+      document.getElementById('createdUserKey').value=result.api_key;
+    } else closeModal();
+    await loadSharing();
+  } catch(error) { modalError(error.message); }
+}
+async function showUserUsage(index) {
+  try {
+    const r=await api('GET',`/api/user-keys/${userKeys[index].id}/usage`);
+    sharingModal(tr('用户用量','User usage'),tableHtml(['UTC',tr('模型','Model'),tr('已计量请求','Metered requests'),'Input tokens','Output tokens'],r.usage.map(u=>[new Date(u.day*86400000).toISOString().slice(0,10),esc(u.model),formatNum(u.requests),formatNum(u.input_tokens),formatNum(u.output_tokens)])));
+  } catch(error) { toast(error.message,'error'); }
+}
+function editRemote(index) {
+  const r=remoteEntries[index] || {id:'',group:'',base_url:'',models:[]};
+  sharingModal(tr('远程上游','Remote upstream'), `<p>${tr('同组上游应提供相同模型。填写 OpenAI Chat 兼容地址，包含 /v1。','Upstreams in a group must offer the same models. Enter an OpenAI Chat-compatible base URL including /v1.')}</p>${[['rmId','ID'],['rmGroup',tr('组','Group')],['rmUrl','Base URL'],['rmKey',tr('API Key（编辑时也需填写）','API key (required when editing)')]].map(([id,label])=>`<div class="form-group"><label for="${id}">${label}</label><input id="${id}" type="${id==='rmKey'?'password':'text'}"></div>`).join('')}<div class="form-group"><label for="rmModels">${tr('上游模型 ID（每行一个）','Upstream model IDs (one per line)')}</label><textarea id="rmModels"></textarea></div><div class="form-actions"><button class="btn-ghost" onclick="closeModal()">${tr('取消','Cancel')}</button><button class="btn-primary" onclick="saveRemote()">${tr('保存','Save')}</button></div>`);
+  for(const [id,v] of Object.entries({rmId:r.id,rmGroup:r.group,rmUrl:r.base_url,rmModels:r.models.join('\n')})) document.getElementById(id).value=v;
+  document.getElementById('rmId').readOnly=Number.isInteger(index);
+}
+async function saveRemote() {
+  try {
+    await api('PUT','/api/remotes',{id:value('rmId'),group:value('rmGroup'),base_url:value('rmUrl'),api_key:value('rmKey'),models:value('rmModels').split('\n').map(s=>s.trim()).filter(Boolean)});
+    closeModal(); await refreshAll();
+  } catch(error) { modalError(error.message); }
+}
+async function deleteRemote(index) {
+  if(!confirm(tr('删除这个远程上游？','Delete this remote upstream?'))) return;
+  try { await api('DELETE',`/api/remotes/${encodeURIComponent(remoteEntries[index].id)}`); await refreshAll(); }
+  catch(error) { toast(error.message,'error'); }
+}
 function formatNum(number) { return Number(number || 0).toLocaleString(language); }
 function esc(valueToEscape) { const node = document.createElement('div'); node.textContent = valueToEscape == null ? '' : String(valueToEscape); return node.innerHTML; }
 function arg(valueToEncode) { return encodeURIComponent(valueToEncode); }

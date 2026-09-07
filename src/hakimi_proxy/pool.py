@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Generic, TypeVar
 
-from hakimi_proxy.config import AIStudioCredential, AntigravityCredential
+from hakimi_proxy.config import AIStudioCredential, AntigravityCredential, RemoteCredential
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class CredentialState(enum.Enum):
     DISABLED = "disabled"
 
 
-T = TypeVar("T", AIStudioCredential, AntigravityCredential)
+T = TypeVar("T", AIStudioCredential, AntigravityCredential, RemoteCredential)
 
 
 @dataclass
@@ -48,6 +48,8 @@ class PooledCredential(Generic[T]):
 
     @property
     def kind(self) -> str:
+        if isinstance(self.credential, RemoteCredential):
+            return 'remote:' + self.credential.group
         if isinstance(self.credential, AIStudioCredential):
             return "aistudio"
         return "antigravity"
@@ -71,24 +73,42 @@ class CredentialPool:
     def add_antigravity(self, cred: AntigravityCredential) -> None:
         self._credentials.append(PooledCredential(credential=cred))
 
+    def add_remote(self, cred: RemoteCredential) -> None:
+        self._credentials.append(PooledCredential(credential=cred))
+
     @staticmethod
     def _identity(credential) -> tuple:
+        if isinstance(credential, RemoteCredential):
+            return credential.base_url, credential.api_key, tuple(credential.models)
         if isinstance(credential, AIStudioCredential):
             return credential.api_key, credential.project
         return (credential.client_id, credential.client_secret,
                 credential.refresh_token, credential.project)
 
-    def validate_reconfiguration(self, aistudio, antigravity) -> None:
+    def validate_reconfiguration(self, aistudio, antigravity, remotes=None) -> None:
         desired = {("aistudio", c.id): c for c in aistudio}
         desired.update({("antigravity", c.id): c for c in antigravity})
+        if remotes is None:
+            remotes = [pc.credential for pc in self._credentials if isinstance(pc.credential, RemoteCredential)]
+        desired.update({('remote:' + c.group, c.id): c for c in remotes})
+        groups = {}
+        for c in remotes:
+            models = set(c.models)
+            if c.group in groups and groups[c.group] != models:
+                raise ValueError('All remotes in a group must offer the same model IDs')
+            groups[c.group] = models
+        if len({c.id for c in remotes}) != len(remotes):
+            raise ValueError('Remote IDs must be unique')
         for pc in self._credentials:
             replacement = desired.get((pc.kind, pc.id))
             if pc.in_flight and (replacement is None or self._identity(replacement) != self._identity(pc.credential)):
                 raise ValueError("Wait for active requests before replacing or deleting their credentials")
 
-    def reconfigure(self, aistudio, antigravity, cooldown_seconds: int) -> None:
+    def reconfigure(self, aistudio, antigravity, cooldown_seconds: int, remotes=None) -> None:
         """Preserve leases and health for unchanged credentials during hot reload."""
-        self.validate_reconfiguration(aistudio, antigravity)
+        if remotes is None:
+            remotes = [pc.credential for pc in self._credentials if isinstance(pc.credential, RemoteCredential)]
+        self.validate_reconfiguration(aistudio, antigravity, remotes)
         existing = {(pc.kind, pc.id): pc for pc in self._credentials}
         updated = []
         for kind, credentials in (("aistudio", aistudio), ("antigravity", antigravity)):
@@ -102,6 +122,13 @@ class CredentialPool:
                 else:
                     pc = PooledCredential(credential=credential)
                 updated.append(pc)
+        for credential in remotes:
+            pc = existing.get(('remote:' + credential.group, credential.id))
+            if pc is None or self._identity(pc.credential) != self._identity(credential):
+                pc = PooledCredential(credential=credential)
+            else:
+                pc.credential.account = credential.account
+            updated.append(pc)
         self._credentials = updated
         self._cooldown_seconds = cooldown_seconds
 

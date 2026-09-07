@@ -6,6 +6,13 @@ All notable changes to NotAccess2Hakimi are documented here.
 
 ### Added
 
+- User API keys separated from administrator access, model permissions,
+  per-key concurrency and persistent minute/day request budgets.
+- Per-user metered token usage and immediate key disablement.
+- Grouped remote OpenAI Chat-compatible gateways with explicit model mapping,
+  credential leases, cooldown and failover through the existing streaming pipeline.
+- Web controls for user keys and remote gateways, plus deployment guidance.
+
 - Added Gemini 3.8 Flash discovery, Antigravity tiered routing, Codex/EMP
   integration metadata, and current official pricing.
 - Added PKCE-based listener-free Antigravity OAuth so Google login can happen

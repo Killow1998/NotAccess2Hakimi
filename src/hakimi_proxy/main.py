@@ -15,6 +15,7 @@ from hakimi_proxy import __version__
 from hakimi_proxy.adapters.aistudio import AIStudioAdapter
 from hakimi_proxy.adapters.antigravity import AntigravityAdapter
 from hakimi_proxy.auth import BearerAuthMiddleware
+from hakimi_proxy.access import AccessStore, router as access_router
 from hakimi_proxy.config import get_config_path, load_config_from_env, save_config
 from hakimi_proxy.diagnostics import DiagnosticJournal
 from hakimi_proxy.metering.pricing import load_custom_pricing
@@ -56,10 +57,13 @@ def create_app() -> FastAPI:
 
     # Build credential pool
     pool = CredentialPool(cooldown_seconds=config.cooldown_seconds)
+    pool.validate_reconfiguration(config.aistudio_credentials, config.antigravity_credentials, config.remote_credentials)
     for cred in config.aistudio_credentials:
         pool.add_aistudio(cred)
     for cred in config.antigravity_credentials:
         pool.add_antigravity(cred)
+    for cred in config.remote_credentials:
+        pool.add_remote(cred)
 
     logger.info(
         "Credential pool: %d AI Studio, %d Antigravity",
@@ -70,6 +74,7 @@ def create_app() -> FastAPI:
     # Store app state
     app.state.pool = pool
     app.state.store = UsageStore(config.db_path)
+    app.state.access = AccessStore(str(config.db_path) + '.access.sqlite3')
     app.state.aistudio = AIStudioAdapter(proxy=config.proxy)
     app.state.antigravity = AntigravityAdapter(proxy=config.proxy)
     app.state.upstream_client_factory = lambda proxy_url=None: (
@@ -134,6 +139,7 @@ def create_app() -> FastAPI:
     app.include_router(models.router)
     app.include_router(usage.router)
     app.include_router(admin.router)
+    app.include_router(access_router)
 
     @app.get("/", response_class=HTMLResponse)
     async def web_ui():

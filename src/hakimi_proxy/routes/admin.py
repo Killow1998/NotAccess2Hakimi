@@ -140,7 +140,7 @@ def _runtime_status(status: dict) -> dict[str, object]:
 def _reload_pool(request: Request, config) -> None:
     """Apply configuration without resetting active leases or account health."""
     pool = request.app.state.pool
-    pool.reconfigure(config.aistudio_credentials, config.antigravity_credentials, config.cooldown_seconds)
+    pool.reconfigure(config.aistudio_credentials, config.antigravity_credentials, config.cooldown_seconds, config.remote_credentials)
     request.app.state.max_retries = config.max_retries
     request.app.state.aistudio.proxy = config.proxy
     request.app.state.antigravity.proxy = config.proxy
@@ -154,7 +154,7 @@ def _reload_pool(request: Request, config) -> None:
 def _load_and_save(request: Request, config) -> None:
     """Validate and save a candidate before applying it to the existing pool."""
     try:
-        request.app.state.pool.validate_reconfiguration(config.aistudio_credentials, config.antigravity_credentials)
+        request.app.state.pool.validate_reconfiguration(config.aistudio_credentials, config.antigravity_credentials, config.remote_credentials)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     save_config(config, get_config_path())
@@ -519,11 +519,11 @@ async def delete_antigravity(cred_id: str, request: Request):
 async def list_credentials(request: Request):
     config = request.app.state.config
     pool = request.app.state.pool
-    status_map = {s["id"]: s for s in pool.get_status()}
+    status_map = {(s['kind'], s['id']): s for s in pool.get_status()}
 
     aistudio = []
     for c in config.aistudio_credentials:
-        s = status_map.get(c.id, {})
+        s = status_map.get(('aistudio', c.id), {})
         aistudio.append({
             "id": c.id,
             "api_key_set": bool(c.api_key),
@@ -535,7 +535,7 @@ async def list_credentials(request: Request):
 
     antigravity = []
     for c in config.antigravity_credentials:
-        s = status_map.get(c.id, {})
+        s = status_map.get(('antigravity', c.id), {})
         antigravity.append({
             "id": c.id,
             "account": c.account,

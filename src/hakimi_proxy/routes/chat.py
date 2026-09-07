@@ -16,6 +16,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from hakimi_proxy.adapters.aistudio import AIStudioAdapter
 from hakimi_proxy.adapters.antigravity import AntigravityAdapter, _gemini_to_openai
 from hakimi_proxy.adapters.base import UpstreamAdapter
+from hakimi_proxy.access import UserUsageSink
+from hakimi_proxy.adapters.remote import RemoteAdapter
 from hakimi_proxy.errors import (
     UpstreamFailure,
     UpstreamError,
@@ -102,15 +104,27 @@ async def _run_chat_completion(
 ):
     """Run the shared upstream Chat Completions path for any facade."""
     model = body.get("model", "gemini-3.7-flash")
+    if not isinstance(model, str) or not model:
+        return JSONResponse(status_code=400, content={'error': {'message': 'model must be a nonempty string'}})
     stream = body.get("stream", False)
 
     pool: CredentialPool = request.app.state.pool
     store = request.app.state.store
+    user_key = getattr(getattr(request, 'state', None), 'user_key', None)
+    if user_key:
+        if user_key['models'] and model not in user_key['models']:
+            return JSONResponse(status_code=403, content={'error': {'message': 'Model not allowed', 'type': 'access_error'}})
+        store = UserUsageSink(store, request.app.state.access, user_key['id'])
     aistudio: AIStudioAdapter = request.app.state.aistudio
     antigravity: AntigravityAdapter = request.app.state.antigravity
     max_retries: int = request.app.state.max_retries
 
-    if provider == "antigravity":
+    if model.startswith('remote/') and provider is None:
+        parts = model.split('/', 2)
+        if len(parts) != 3 or not any(c.group == parts[1] and parts[2] in c.models for c in request.app.state.config.remote_credentials):
+            return JSONResponse(status_code=404, content={'error': {'message': 'Remote model not configured'}})
+        adapter = RemoteAdapter(parts[1], request.app.state.config.proxy)
+    elif provider == "antigravity":
         adapter = antigravity
     elif provider == "aistudio":
         adapter = aistudio
@@ -219,6 +233,8 @@ async def _acquire_for_request(
     credential_id: str | None = None,
 ) -> tuple[UpstreamAdapter, PooledCredential]:
     """Prefer the selected adapter, then try a compatible fallback before waiting."""
+    if adapter.kind.startswith('remote:'):
+        return adapter, await pool.acquire(kind=adapter.kind, timeout_seconds=max(0, deadline - time.monotonic()))
     if credential_id:
         remaining = max(0.0, deadline - time.monotonic())
         return adapter, await pool.acquire(

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from urllib.parse import urlsplit
 
 
 @dataclass
@@ -32,6 +33,25 @@ class AntigravityCredential:
 
 
 @dataclass
+class RemoteCredential:
+    id: str
+    group: str
+    base_url: str
+    api_key: str
+    models: list[str]
+    account: str = ''
+
+    def __post_init__(self):
+        url = urlsplit(self.base_url)
+        if (url.scheme != 'https' and not (url.scheme == 'http' and url.hostname in {'localhost', '127.0.0.1', '::1'})) or not url.hostname or url.username or url.password or url.query or url.fragment:
+            raise ValueError('Remote base_url must use HTTPS (HTTP is allowed on loopback only) without URL credentials, query or fragment')
+        if not self.group or not all(c.isalnum() or c in '-_' for c in self.group):
+            raise ValueError('Remote group must contain only letters, digits, hyphens or underscores')
+        if not isinstance(self.models, list) or not self.models or any(not isinstance(m, str) or not m for m in self.models):
+            raise ValueError('Remote models must be a nonempty list of model IDs')
+
+
+@dataclass
 class ProxyConfig:
     host: str = "127.0.0.1"
     port: int = 12345
@@ -47,6 +67,7 @@ class ProxyConfig:
     antigravity_client_secret: str = ""
     aistudio_credentials: list[AIStudioCredential] = field(default_factory=list)
     antigravity_credentials: list[AntigravityCredential] = field(default_factory=list)
+    remote_credentials: list[RemoteCredential] = field(default_factory=list)
 
 
 def load_config(path: str | Path) -> ProxyConfig:
@@ -97,6 +118,7 @@ def load_config(path: str | Path) -> ProxyConfig:
         antigravity_client_secret=raw.get("antigravity_client_secret", ""),
         aistudio_credentials=ai_creds,
         antigravity_credentials=ag_creds,
+        remote_credentials=[RemoteCredential(**item) for item in raw.get('remotes', [])],
     )
 
 
@@ -121,6 +143,8 @@ def save_config(config: ProxyConfig, path: str | Path | None = None) -> None:
         "proxy": config.proxy,
         "antigravity_client_id": config.antigravity_client_id,
         "antigravity_client_secret": config.antigravity_client_secret,
+        "remotes": [dict(id=c.id, group=c.group, base_url=c.base_url, api_key=c.api_key,
+                         models=c.models, account=c.account) for c in config.remote_credentials],
         "aistudio": [
             {
                 "id": c.id,

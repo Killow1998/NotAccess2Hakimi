@@ -6,6 +6,10 @@ OpenAI-compatible Gemini proxy with account pooling and built-in traffic meterin
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
+Current main also supports separate user API keys, persistent request budgets and
+grouped remote OpenAI-compatible gateways. See [multi-user deployment](docs/multi-user-deployment.md)
+for setup, permissions and the single-worker boundary.
+
 NotAccess2Hakimi aggregates AI Studio API keys and Antigravity OAuth
 credentials behind one endpoint. It speaks OpenAI `/v1/chat/completions` and
 Codex-compatible `/v1/responses`, with SQLite-backed usage tracking and

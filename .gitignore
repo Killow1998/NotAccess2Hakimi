@@ -10,6 +10,7 @@ config.yaml
 config.local.yaml
 hakimi.db
 *.db
+*.access.sqlite3*
 state/
 .vscode/
 .idea/
