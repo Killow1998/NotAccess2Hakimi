@@ -31,6 +31,18 @@ All notable changes to NotAccess2Hakimi are documented here.
 
 ### Fixed
 
+- Public OAuth clients can export and restore credentials and refresh tokens
+  without a client secret. Manual credential editing can explicitly clear a secret.
+- Keep OAuth client IDs and secrets paired across configuration reloads, and use
+  the original client identity when completing an authorization already in progress.
+- Preserve account leases, cooldowns, and disabled states when settings change.
+  Replacing or deleting a busy credential now waits for the user to retry after
+  active requests finish, without changing the saved configuration on rejection.
+- Finish connection cleanup and release account leases even after repeated
+  cancellation; do not report truncated or invalid tool arguments as successful.
+- Keep streamed tool identities consistent when their names or IDs arrive late.
+- Restore the working directory before cleaning up reliability-test files on Windows.
+
 - API-equivalent cost estimation for routed Antigravity tier IDs such as
   `gemini-3.7-flash-tiered`, including cached-input and thinking-token prices.
 - Quota lookup failures no longer disturb inference health or erase the last
