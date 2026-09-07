@@ -19,7 +19,7 @@ from hakimi_proxy.config import get_config_path, load_config_from_env, save_conf
 from hakimi_proxy.diagnostics import DiagnosticJournal
 from hakimi_proxy.metering.pricing import load_custom_pricing
 from hakimi_proxy.metering.store import UsageStore
-from hakimi_proxy.oauth import AntigravityOAuthManager
+from hakimi_proxy.oauth import AntigravityOAuthManager, resolve_oauth_client
 from hakimi_proxy.pool import CredentialPool
 from hakimi_proxy.proxy import configure_proxy_environment
 from hakimi_proxy.routes import chat, models, responses, usage
@@ -77,11 +77,11 @@ def create_app() -> FastAPI:
     )
     # Persist OAuth refresh-token rotation without exposing credentials to the UI.
     app.state.antigravity.on_credential_update = lambda: save_config(app.state.config, get_config_path())
-    oauth_credential = next(iter(config.antigravity_credentials), None)
+    client_id, client_secret = resolve_oauth_client(config)
     app.state.antigravity_oauth = AntigravityOAuthManager(
         proxy=config.proxy,
-        client_id=oauth_credential.client_id if oauth_credential else "",
-        client_secret=oauth_credential.client_secret if oauth_credential else "",
+        client_id=client_id,
+        client_secret=client_secret,
     )
     app.state.max_retries = config.max_retries
     app.state.config = config

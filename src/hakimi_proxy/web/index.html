@@ -395,9 +395,11 @@ async function refreshAll() {
 function recommendedModel() {
   const ids = new Set((state.models || []).map(model => model.id));
   if ((state.credentials.antigravity || []).length) {
-    const id = ids.has('gemini-3.7-flash-tiered') ? 'gemini-3.7-flash-tiered' : 'gemini-3.7-flash';
+    const id = ['gemini-3.8-flash-tiered', 'gemini-3.8-flash', 'gemini-3.7-flash-tiered', 'gemini-3.7-flash']
+      .find(candidate => ids.has(candidate)) || 'gemini-3.8-flash-tiered';
     return `antigravity/${id}`;
   }
+  if (ids.has('gemini-3.8-flash')) return 'gemini-3.8-flash';
   if (ids.has('gemini-3.7-flash')) return 'gemini-3.7-flash';
   return state.models?.[0]?.id || 'gemini-2.5-flash';
 }
@@ -488,7 +490,7 @@ function renderCredentialList(kind, credentials) {
       : '';
     const detail = kind === 'aistudio'
       ? [credential.api_key_set ? tr('API key 已设置', 'API key set') : tr('API key 缺失', 'API key missing'), credential.account, credential.project]
-      : [credential.account || credential.client_id, credential.client_secret_set ? tr('client secret 已设置', 'client secret set') : tr('client secret 缺失', 'client secret missing'), credential.refresh_token_set ? tr('refresh token 已设置', 'refresh token set') : tr('refresh token 缺失', 'refresh token missing'), tokenExpiry, credential.project];
+      : [credential.account || credential.client_id, credential.client_secret_set ? tr('client secret 已设置', 'client secret set') : tr('公开客户端（无 secret）', 'Public client (no secret)'), credential.refresh_token_set ? tr('refresh token 已设置', 'refresh token set') : tr('refresh token 缺失', 'refresh token missing'), tokenExpiry, credential.project];
     const runtime = [
       credential.in_flight ? tr(`${credential.in_flight} 个请求处理中`, `${credential.in_flight} requests in flight`) : tr('空闲', 'Idle'),
       `${tr('健康：', 'Health: ')}${healthLabel(credential.health)}`,
@@ -600,15 +602,16 @@ function verificationResultMessage(result) {
 
 async function startAntigravityOAuth() {
   try {
-    const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
-    const mode = localHosts.has(window.location.hostname) ? 'local' : 'remote';
+    // Always use the listener-free flow so Google login can happen on any
+    // Google-accessible device, including when NA2H itself is local.
+    const mode = 'remote';
     const session = await api('POST', '/api/credentials/antigravity/oauth/start', { mode });
     oauthSession = session;
     openAntigravityOAuthModal(session);
     const popup = window.open(session.authorization_url, '_blank', 'noopener,noreferrer');
     if (!popup) oauthStatus(tr('浏览器阻止了新窗口；请点击“打开授权链接”或复制到任意 Chrome。', 'The browser blocked the new window. Click Open authorization link or copy it into any Chrome browser.'));
     else if (session.mode === 'local') oauthStatus(tr('已打开 Google 登录页；本机回调成功后会自动完成。', 'The Google sign-in page is open. A successful local callback will complete automatically.'));
-    else oauthStatus(tr('已打开 Google 登录页；完成后请粘贴地址栏里的回调 URL。', 'The Google sign-in page is open. When finished, paste the callback URL from the address bar.'));
+    else oauthStatus(tr('已打开 Google 登录页；完成后请复制页面显示的 code 并粘贴回来。', 'The Google sign-in page is open. When finished, copy the code shown by Google and paste it here.'));
     if (session.mode === 'local') pollAntigravityOAuth(session);
   } catch (error) { toast(error.message, 'error'); }
 }
@@ -616,10 +619,10 @@ async function startAntigravityOAuth() {
 function openAntigravityOAuthModal(session) {
   const remote = session.mode === 'remote';
   document.getElementById('modalContent').innerHTML = `<h2 id="modalTitle">${tr('Antigravity 登录', 'Antigravity sign-in')}</h2>
-    <p class="modal-note">${remote ? tr('请在任意 Chrome 完成登录；跳转 localhost 后即使连接失败，也要复制地址栏完整 URL 并粘贴回来。', 'Complete sign-in in any Chrome browser. After the localhost redirect, copy the complete address-bar URL and paste it here even if the page cannot connect.') : tr('完成 Google 登录后会自动回填；如果没有自动完成，也可以粘贴浏览器地址栏里的完整回调 URL。', 'Google sign-in completes automatically. If it does not, paste the complete callback URL from the browser address bar.')}</p>
-    <div class="form-group"><label for="oauthUrl">${tr('授权链接', 'Authorization link')}</label><textarea id="oauthUrl" readonly>${esc(session.authorization_url)}</textarea><div class="secret-note">${tr('回调地址：', 'Callback URL: ')}${esc(session.redirect_uri || 'http://localhost:51121/oauth-callback')}</div></div>
+    <p class="modal-note">${remote ? tr('请在任意可访问 Google 的 Chrome 完成登录；成功后 Google 会显示“Paste this code into your application”，复制该 code 并粘贴回来。', 'Complete sign-in in any Chrome browser that can access Google. Google will then show “Paste this code into your application”; copy that code and paste it here.') : tr('完成 Google 登录后会自动回填；如果没有自动完成，也可以粘贴浏览器地址栏里的完整回调 URL。', 'Google sign-in completes automatically. If it does not, paste the complete callback URL from the browser address bar.')}</p>
+    <div class="form-group"><label for="oauthUrl">${tr('授权链接', 'Authorization link')}</label><textarea id="oauthUrl" readonly>${esc(session.authorization_url)}</textarea><div class="secret-note">${tr('授权结果：', 'Authorization result: ')}${esc(session.redirect_uri || 'http://localhost:51121/oauth-callback')}</div></div>
     <div class="form-actions"><button class="btn-ghost" onclick="copyOAuthUrl()">${tr('复制链接', 'Copy link')}</button><button class="btn-ghost" onclick="openOAuthUrl()">${tr('打开授权链接', 'Open authorization link')}</button></div>
-    <div class="form-group"><label for="oauthResult">${tr('授权结果（完整回调 URL 或 OAuth code）', 'Authorization result (complete callback URL or OAuth code)')}</label><textarea id="oauthResult" placeholder="${esc(session.redirect_uri || 'http://localhost:51121/oauth-callback')}?code=...&state=..."></textarea></div>
+    <div class="form-group"><label for="oauthResult">${tr(remote ? '授权结果（Google 显示的 OAuth code）' : '授权结果（完整回调 URL 或 OAuth code）', remote ? 'Authorization result (OAuth code shown by Google)' : 'Authorization result (complete callback URL or OAuth code)')}</label><textarea id="oauthResult" placeholder="${esc(remote ? '4/...（从 Google 页面复制）' : `${session.redirect_uri || 'http://localhost:51121/oauth-callback'}?code=...&state=...`)}"></textarea></div>
     <div class="modal-status" id="oauthStatus" role="alert">${tr('等待 Google 授权…', 'Waiting for Google authorization…')}</div>
     <div class="form-actions"><button class="btn-ghost" onclick="closeModal()">${tr('取消', 'Cancel')}</button><button class="btn-blue" id="oauthComplete" onclick="submitAntigravityOAuth()">${tr('完成登录', 'Complete sign-in')}</button></div>`;
   document.getElementById('modalOverlay').classList.add('show');
@@ -769,6 +772,7 @@ function openCredentialModal(kind, id = '') {
       <div class="form-group"><label for="mAccount">${tr('Google 账号（可选）', 'Google account (optional)')}</label><input id="mAccount" value="${esc(credential?.account || '')}" placeholder="user@gmail.com"></div>
       <div class="form-group"><label for="mClientId">Client ID</label><input id="mClientId" value="${esc(credential?.client_id || '')}" placeholder="xxx.apps.googleusercontent.com"></div>
       <div class="form-group"><label for="mClientSecret">Client secret</label><input id="mClientSecret" type="password" autocomplete="new-password" placeholder="${isEdit && credential?.client_secret_set ? tr('已设置；留空保持当前值', 'Set; leave blank to keep current value') : 'GOCSPX-…'}"></div>
+      <label class="checkbox"><input id="mPublicClient" type="checkbox" ${isEdit && !credential?.client_secret_set ? 'checked' : ''}>${tr('公开客户端（不使用 client secret）', 'Public client (no client secret)')}</label>
       <div class="form-group"><label for="mRefreshToken">Refresh token</label><input id="mRefreshToken" type="password" autocomplete="new-password" placeholder="${isEdit && credential?.refresh_token_set ? tr('已设置；留空保持当前值', 'Set; leave blank to keep current value') : '1//…'}"></div>
       <div class="form-group"><label for="mProject">${tr('Project（可选）', 'Project (optional)')}</label><input id="mProject" value="${esc(credential?.project || '')}" placeholder="${tr('留空使用动态发现', 'Leave blank for dynamic discovery')}"></div>
       <label class="checkbox"><input id="mAutoOnboard" type="checkbox" ${credential?.auto_onboard ? 'checked' : ''}>${tr('允许自动 onboard', 'Allow automatic onboarding')}</label>
@@ -796,13 +800,14 @@ async function saveCredential(kind) {
       else if (apiKey) body.api_key = apiKey;
     } else {
       const clientId = value('mClientId'); const clientSecret = value('mClientSecret'); const refreshToken = value('mRefreshToken');
-      if (!isEdit && (!clientId || !clientSecret || !refreshToken)) { modalError(tr('新增时 OAuth 字段均必填', 'All OAuth fields are required when adding a credential')); return; }
+      const publicClient = document.getElementById('mPublicClient').checked;
+      if (!isEdit && (!clientId || (!publicClient && !clientSecret) || !refreshToken)) { modalError(tr('请填写 Client ID、Refresh token，以及非公开客户端的 secret', 'Enter Client ID, Refresh token, and a secret for a confidential client')); return; }
       body = { account: value('mAccount'), project: value('mProject'), auto_onboard: document.getElementById('mAutoOnboard').checked };
-      if (!isEdit) Object.assign(body, { id, client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken });
-      else { if (clientId) body.client_id = clientId; if (clientSecret) body.client_secret = clientSecret; if (refreshToken) body.refresh_token = refreshToken; }
+      if (!isEdit) Object.assign(body, { id, client_id: clientId, client_secret: publicClient ? '' : clientSecret, refresh_token: refreshToken });
+      else { if (clientId) body.client_id = clientId; if (publicClient || clientSecret) body.client_secret = publicClient ? '' : clientSecret; if (refreshToken) body.refresh_token = refreshToken; }
     }
     await api(isEdit ? 'PUT' : 'POST', isEdit ? `/api/credentials/${kind}/${encodeURIComponent(editingId)}` : `/api/credentials/${kind}`, body);
-    closeModal(); toast(isEdit ? tr('已保存，未填写的密钥保持不变', 'Saved; blank secret fields kept their current values') : tr('已添加', 'Added'), 'success'); await loadCredentials();
+    closeModal(); toast(isEdit ? tr('已保存', 'Saved') : tr('已添加', 'Added'), 'success'); await loadCredentials();
   } catch (error) { modalError(error.message); }
 }
 async function deleteCredential(kind, encodedId) {

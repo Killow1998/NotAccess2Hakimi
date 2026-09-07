@@ -29,6 +29,11 @@ class ModelPricing:
 _PER_M = 1_000_000.0
 
 BUILTIN_PRICING: dict[str, ModelPricing] = {
+    "gemini-3.8-flash": ModelPricing(
+        input_cost_per_token=0.75 / _PER_M,
+        output_cost_per_token=3.75 / _PER_M,
+        cache_read_input_token_cost=0.075 / _PER_M,
+    ),
     "gemini-3.7-flash": ModelPricing(
         input_cost_per_token=0.75 / _PER_M,
         output_cost_per_token=3.75 / _PER_M,
@@ -86,6 +91,7 @@ _pricing_table: dict[str, ModelPricing] = dict(BUILTIN_PRICING)
 # public API price. Keep the two identities explicit instead of weakening model
 # routing with pricing-only aliases.
 BILLING_MODEL_ALIASES: dict[str, str] = {
+    "gemini-3.8-flash-tiered": "gemini-3.8-flash",
     "gemini-3.7-flash-tiered": "gemini-3.7-flash",
     "gemini-3.6-flash-high": "gemini-3.6-flash",
     "gemini-3.6-flash-medium": "gemini-3.6-flash",

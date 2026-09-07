@@ -47,6 +47,19 @@ def test_bundle_exports_only_portable_credentials():
     assert "expires_at" not in rendered
 
 
+@pytest.mark.parametrize("secret", ["", "client-secret"])
+def test_public_and_confidential_client_backup_roundtrip(secret):
+    config = _config()
+    config.antigravity_credentials[0].client_secret = secret
+    parsed = parse_credential_bundle(build_credential_bundle(config))
+    clean = ProxyConfig()
+    assert plan_credential_import(clean, parsed)["total_new"] == 2
+    _, restored, _ = merge_credential_bundle(clean, parsed)
+    assert restored[0].client_secret == secret
+    assert restored[0].client_id == "client-id"
+    assert restored[0].refresh_token == "refresh-secret"
+
+
 def test_bundle_parser_rejects_unknown_version_and_duplicate_ids():
     with pytest.raises(CredentialBundleError, match="Unsupported credential bundle"):
         parse_credential_bundle({"format": "notaccess2hakimi.credentials", "version": 2})

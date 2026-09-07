@@ -439,14 +439,16 @@ class AntigravityAdapter(UpstreamAdapter):
 
             logger.info("Refreshing OAuth token for credential %s", cred.id)
             async with httpx.AsyncClient(proxy=self.proxy or None) as client:
+                token_data = {
+                    "client_id": ag.client_id,
+                    "refresh_token": ag.refresh_token,
+                    "grant_type": "refresh_token",
+                }
+                if ag.client_secret:
+                    token_data["client_secret"] = ag.client_secret
                 resp = await client.post(
                     OAUTH_TOKEN_URL,
-                    data={
-                        "client_id": ag.client_id,
-                        "client_secret": ag.client_secret,
-                        "refresh_token": ag.refresh_token,
-                        "grant_type": "refresh_token",
-                    },
+                    data=token_data,
                     timeout=30.0,
                 )
                 if resp.status_code != 200:

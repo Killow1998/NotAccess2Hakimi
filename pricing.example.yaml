@@ -2,6 +2,10 @@
 # Copy to pricing.yaml to override built-in prices.
 # Values below are the defaults from the official pricing page.
 
+gemini-3.8-flash:
+  input_cost_per_token: 0.00000075
+  output_cost_per_token: 0.00000375
+
 gemini-3.7-flash:
   input_cost_per_token: 0.00000075
   output_cost_per_token: 0.00000375

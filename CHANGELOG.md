@@ -6,6 +6,12 @@ All notable changes to NotAccess2Hakimi are documented here.
 
 ### Added
 
+- Added Gemini 3.8 Flash discovery, Antigravity tiered routing, Codex/EMP
+  integration metadata, and current official pricing.
+- Added PKCE-based listener-free Antigravity OAuth so Google login can happen
+  on another device without installing `agy` or configuring a client secret on
+  the NA2H host.
+
 - A manual, per-account Antigravity full verification that composes local
   setup, OAuth, control-plane, quota, non-streaming Responses, and a streamed
   signed two-turn Agent replay in exactly three inference requests.

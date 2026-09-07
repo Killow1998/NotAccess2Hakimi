@@ -40,6 +40,11 @@ class ProxyConfig:
     cooldown_seconds: int = 60
     db_path: str = "hakimi.db"
     proxy: str = ""
+    # Application-level Antigravity OAuth client settings. These are kept
+    # separate from per-account credentials and are never returned by admin
+    # API responses.
+    antigravity_client_id: str = ""
+    antigravity_client_secret: str = ""
     aistudio_credentials: list[AIStudioCredential] = field(default_factory=list)
     antigravity_credentials: list[AntigravityCredential] = field(default_factory=list)
 
@@ -88,6 +93,8 @@ def load_config(path: str | Path) -> ProxyConfig:
         cooldown_seconds=raw.get("cooldown_seconds", 60),
         db_path=raw.get("db_path", "hakimi.db"),
         proxy=raw.get("proxy", ""),
+        antigravity_client_id=raw.get("antigravity_client_id", ""),
+        antigravity_client_secret=raw.get("antigravity_client_secret", ""),
         aistudio_credentials=ai_creds,
         antigravity_credentials=ag_creds,
     )
@@ -112,6 +119,8 @@ def save_config(config: ProxyConfig, path: str | Path | None = None) -> None:
         "cooldown_seconds": config.cooldown_seconds,
         "db_path": config.db_path,
         "proxy": config.proxy,
+        "antigravity_client_id": config.antigravity_client_id,
+        "antigravity_client_secret": config.antigravity_client_secret,
         "aistudio": [
             {
                 "id": c.id,

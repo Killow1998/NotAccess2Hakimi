@@ -41,6 +41,7 @@ def test_aistudio_supports_model():
     adapter = AIStudioAdapter()
     assert adapter.supports_model("gemini-3.7-flash")
     assert adapter.supports_model("gemini-3.5-flash")
+    assert adapter.supports_model("gemini-3.8-flash")
     assert not adapter.supports_model("gpt-4")
 
 
@@ -89,6 +90,8 @@ def test_aistudio_transform_non_data_line():
 
 def test_antigravity_supports_model():
     adapter = AntigravityAdapter()
+    assert adapter.supports_model("gemini-3.8-flash")
+    assert adapter.supports_model("gemini-3.8-flash-tiered")
     assert adapter.supports_model("gemini-3.7-flash")
     assert adapter.supports_model("gemini-3.7-flash-tiered")
     assert adapter.supports_model("gemini-3.6-flash-high")
@@ -100,6 +103,8 @@ def test_antigravity_supports_model():
 
 def test_antigravity_uses_catalog_confirmed_model_alias():
     assert _resolve_model_name("gemini-3.7-flash") == "gemini-3.7-flash-tiered"
+    assert _resolve_model_name("gemini-3.8-flash") == "gemini-3.8-flash-tiered"
+    assert _resolve_model_name("gemini-3.8-flash-tiered") == "gemini-3.8-flash-tiered"
     assert _resolve_model_name("gemini-3.7-flash-tiered") == "gemini-3.7-flash-tiered"
     assert _resolve_model_name("gemini-3.7-flash-high") == "gemini-3.7-flash-high"
 
@@ -685,7 +690,7 @@ async def test_antigravity_discovers_project_before_forwarding():
     cred.credential.expires_at = time.time() + 3600
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         response = await AntigravityAdapter().forward(
-            {"model": "gemini-3.7-flash", "messages": [{"role": "user", "content": "hi"}]},
+            {"model": "gemini-3.8-flash", "messages": [{"role": "user", "content": "hi"}]},
             cred,
             False,
             client,
@@ -693,7 +698,7 @@ async def test_antigravity_discovers_project_before_forwarding():
 
     assert response.status_code == 200
     assert cred.credential.project == "dynamic-project"
-    assert json.loads(requests[-1].content)["model"] == "gemini-3.7-flash-tiered"
+    assert json.loads(requests[-1].content)["model"] == "gemini-3.8-flash-tiered"
     assert len(requests) == 2
 
 

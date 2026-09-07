@@ -115,7 +115,7 @@ def parse_credential_bundle(raw: Any) -> ParsedCredentialBundle:
         antigravity.append(AntigravityCredential(
             id=_text(item, "id", required=True, max_length=128),
             client_id=_text(item, "client_id", required=True),
-            client_secret=_text(item, "client_secret", required=True),
+            client_secret=_text(item, "client_secret"),
             refresh_token=_text(item, "refresh_token", required=True),
             account=_text(item, "account", max_length=512),
             project=_text(item, "project", max_length=512),
