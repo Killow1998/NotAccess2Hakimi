@@ -71,6 +71,40 @@ class CredentialPool:
     def add_antigravity(self, cred: AntigravityCredential) -> None:
         self._credentials.append(PooledCredential(credential=cred))
 
+    @staticmethod
+    def _identity(credential) -> tuple:
+        if isinstance(credential, AIStudioCredential):
+            return credential.api_key, credential.project
+        return (credential.client_id, credential.client_secret,
+                credential.refresh_token, credential.project)
+
+    def validate_reconfiguration(self, aistudio, antigravity) -> None:
+        desired = {("aistudio", c.id): c for c in aistudio}
+        desired.update({("antigravity", c.id): c for c in antigravity})
+        for pc in self._credentials:
+            replacement = desired.get((pc.kind, pc.id))
+            if pc.in_flight and (replacement is None or self._identity(replacement) != self._identity(pc.credential)):
+                raise ValueError("Wait for active requests before replacing or deleting their credentials")
+
+    def reconfigure(self, aistudio, antigravity, cooldown_seconds: int) -> None:
+        """Preserve leases and health for unchanged credentials during hot reload."""
+        self.validate_reconfiguration(aistudio, antigravity)
+        existing = {(pc.kind, pc.id): pc for pc in self._credentials}
+        updated = []
+        for kind, credentials in (("aistudio", aistudio), ("antigravity", antigravity)):
+            for index, credential in enumerate(credentials):
+                pc = existing.get((kind, credential.id))
+                if pc is not None and self._identity(pc.credential) == self._identity(credential):
+                    pc.credential.account = credential.account
+                    if kind == "antigravity":
+                        pc.credential.auto_onboard = credential.auto_onboard
+                    credentials[index] = pc.credential
+                else:
+                    pc = PooledCredential(credential=credential)
+                updated.append(pc)
+        self._credentials = updated
+        self._cooldown_seconds = cooldown_seconds
+
     @property
     def all_credentials(self) -> list[PooledCredential]:
         return list(self._credentials)

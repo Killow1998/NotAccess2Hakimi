@@ -304,12 +304,94 @@ async def test_create_rejects_blank_required_secrets():
     app = _make_admin_app()
     ai = await _request(app, "POST", "/api/credentials/aistudio", json={"id": "blank-ai", "api_key": "  "})
     ag = await _request(app, "POST", "/api/credentials/antigravity", json={
-        "id": "blank-ag", "client_id": "cid", "client_secret": "", "refresh_token": "rt",
+        "id": "blank-ag", "client_id": "cid", "client_secret": "", "refresh_token": "  ",
     })
     assert ai.status_code == 422
     assert ag.status_code == 422
     assert not app.state.config.aistudio_credentials
     assert not app.state.config.antigravity_credentials
+
+
+async def test_public_client_create_clear_secret_and_reload():
+    app = _make_admin_app()
+    created = await _request(app, "POST", "/api/credentials/antigravity", json={
+        "id": "public", "client_id": "client-A", "client_secret": "secret-A", "refresh_token": "refresh",
+    })
+    assert created.status_code == 200
+    manager = app.state.antigravity_oauth
+    session = manager.start()
+    rejected = await _request(app, "PUT", "/api/credentials/antigravity/public", json={"client_id": "client-B"})
+    assert rejected.status_code == 422
+    updated = await _request(app, "PUT", "/api/credentials/antigravity/public", json={
+        "client_id": "client-B", "client_secret": "",
+    })
+    assert updated.status_code == 200
+    assert (manager.client_id, manager.client_secret) == ("client-B", "")
+    assert manager.record_callback(session["state"], "code", "")
+    assert manager.claim_code(session["state"])[3:] == ("client-A", "secret-A")
+    manager.complete(session["state"], "public", "")
+    assert manager._session.code_verifier == manager._session.client_secret == ""
+    assert (await _request(app, "POST", "/api/credentials/antigravity", json={
+        "id": "public2", "client_id": "client-C", "refresh_token": "refresh",
+    })).status_code == 200
+
+
+@pytest.mark.parametrize("secret", ["", "client-secret"])
+async def test_oauth_backup_import_and_refresh(secret, monkeypatch):
+    from hakimi_proxy.credential_bundle import build_credential_bundle
+    from hakimi_proxy.adapters import antigravity as adapter_module
+
+    source = ProxyConfig(antigravity_credentials=[AntigravityCredential(
+        id="restored", client_id="client", client_secret=secret, refresh_token="refresh",
+    )])
+    app = _make_admin_app()
+    for action in ("preview", "apply"):
+        response = await _request(app, "POST", "/api/credentials/import",
+            base_url="https://na2h.example", json={"bundle": build_credential_bundle(source), "action": action})
+        assert response.status_code == 200
+    forms = []
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def post(self, url, **kwargs):
+            forms.append(kwargs["data"])
+            return httpx.Response(200, json={"access_token": "access", "expires_in": 3600})
+
+    monkeypatch.setattr(adapter_module.httpx, "AsyncClient", lambda **kwargs: Client())
+    await app.state.antigravity.refresh_credential(app.state.pool.all_credentials[0])
+    assert forms[0]["client_id"] == "client"
+    assert ("client_secret" in forms[0]) == bool(secret)
+    if secret:
+        assert forms[0]["client_secret"] == secret
+
+
+async def test_hot_settings_reload_keeps_live_lease_and_rejects_busy_replacement(_isolate_config):
+    from hakimi_proxy.pool import CredentialUnavailable
+    app = _make_admin_app()
+    await _request(app, "POST", "/api/credentials/aistudio", json={"id": "live", "api_key": "old-key"})
+    pool = app.state.pool
+    leased = await pool.acquire(timeout_seconds=0)
+    updated = await _request(app, "PUT", "/api/config", json={"max_retries": 2})
+    assert updated.status_code == 200
+    assert app.state.pool is pool
+    with pytest.raises(CredentialUnavailable):
+        await app.state.pool.acquire(timeout_seconds=0)
+    saved = _isolate_config.read_bytes()
+    for method, payload in (("PUT", {"api_key": "new-key"}), ("DELETE", None)):
+        result = await _request(app, method, "/api/credentials/aistudio/live", json=payload)
+        assert result.status_code == 409
+        assert _isolate_config.read_bytes() == saved
+        assert app.state.config.aistudio_credentials[0].api_key == "old-key"
+    await pool.release(leased)
+    assert (await _request(app, "PUT", "/api/credentials/aistudio/live", json={"api_key": "new-key"})).status_code == 200
+    next_lease = await pool.acquire(timeout_seconds=0)
+    assert next_lease.credential.api_key == "new-key"
+    await pool.release(next_lease)
 
 
 async def test_delete_aistudio_credential():
@@ -355,7 +437,10 @@ async def test_antigravity_oauth_status_creates_credential(monkeypatch, _isolate
             return {"status": "pending", "credential_id": "", "account": "", "message": ""}
 
         def claim_code(self, state):
-            return "one-time-code", "http://localhost:51121/oauth-callback", "pkce-verifier"
+            return "one-time-code", "http://localhost:51121/oauth-callback", "pkce-verifier", self.client_id, self.client_secret
+
+        def configure_client(self, client_id, client_secret):
+            self.client_id, self.client_secret = client_id, client_secret
 
         def complete(self, state, credential_id, account):
             self.completed = (credential_id, account)
@@ -439,7 +524,10 @@ async def test_antigravity_oauth_complete_accepts_remote_callback(monkeypatch, _
             return True
 
         def claim_code(self, state):
-            return "one-time-code", "http://localhost:51121/oauth-callback", "pkce-verifier"
+            return "one-time-code", "http://localhost:51121/oauth-callback", "pkce-verifier", self.client_id, self.client_secret
+
+        def configure_client(self, client_id, client_secret):
+            self.client_id, self.client_secret = client_id, client_secret
 
         def complete(self, state, credential_id, account):
             self.completed = (credential_id, account)

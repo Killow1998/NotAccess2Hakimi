@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
 import ipaddress
 import re
 import time
 from typing import Any, Literal
 
 import httpx
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -27,10 +28,9 @@ from hakimi_proxy.credential_bundle import (
     parse_credential_bundle,
     plan_credential_import,
 )
-from hakimi_proxy.pool import CredentialPool
 from hakimi_proxy.errors import UpstreamError, classify_exception, classify_response
 from hakimi_proxy.proxy import configure_proxy_environment
-from hakimi_proxy.oauth import AntigravityOAuthManager, exchange_oauth_code
+from hakimi_proxy.oauth import AntigravityOAuthManager, exchange_oauth_code, resolve_oauth_client
 from hakimi_proxy.verification import run_full_verification
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ class AIStudioCredUpdate(BaseModel):
 class AntigravityCredIn(BaseModel):
     id: str
     client_id: str
-    client_secret: str
+    client_secret: str = ""
     refresh_token: str
     account: str = ""
     access_token: str = ""
@@ -138,31 +138,25 @@ def _runtime_status(status: dict) -> dict[str, object]:
 
 
 def _reload_pool(request: Request, config) -> None:
-    """Rebuild the credential pool from config and update app state."""
-    pool = CredentialPool(cooldown_seconds=config.cooldown_seconds)
-    for cred in config.aistudio_credentials:
-        pool.add_aistudio(cred)
-    for cred in config.antigravity_credentials:
-        pool.add_antigravity(cred)
-    request.app.state.pool = pool
+    """Apply configuration without resetting active leases or account health."""
+    pool = request.app.state.pool
+    pool.reconfigure(config.aistudio_credentials, config.antigravity_credentials, config.cooldown_seconds)
     request.app.state.max_retries = config.max_retries
     request.app.state.aistudio.proxy = config.proxy
     request.app.state.antigravity.proxy = config.proxy
     oauth_manager = getattr(request.app.state, "antigravity_oauth", None)
     if oauth_manager is not None:
         oauth_manager.proxy = config.proxy
-        oauth_credential = next(iter(config.antigravity_credentials), None)
-        if oauth_credential:
-            oauth_manager.client_id = oauth_credential.client_id or config.antigravity_client_id or oauth_manager.client_id
-            oauth_manager.client_secret = oauth_credential.client_secret or config.antigravity_client_secret or oauth_manager.client_secret
-        else:
-            oauth_manager.client_id = config.antigravity_client_id or oauth_manager.client_id
-            oauth_manager.client_secret = config.antigravity_client_secret or oauth_manager.client_secret
+        oauth_manager.configure_client(*resolve_oauth_client(config))
     request.app.state.config = config
 
 
 def _load_and_save(request: Request, config) -> None:
-    """Save config to disk and rebuild pool."""
+    """Validate and save a candidate before applying it to the existing pool."""
+    try:
+        request.app.state.pool.validate_reconfiguration(config.aistudio_credentials, config.antigravity_credentials)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     save_config(config, get_config_path())
     _reload_pool(request, config)
 
@@ -210,7 +204,7 @@ async def get_settings(request: Request):
 
 @router.put("/config")
 async def update_settings(settings: SettingsIn, request: Request):
-    config = request.app.state.config
+    config = deepcopy(request.app.state.config)
     config.host = settings.host
     config.port = settings.port
     if settings.auth_token is not None:
@@ -261,7 +255,7 @@ async def import_credentials(payload: CredentialImportIn, request: Request):
     if payload.action == "preview":
         return {"status": "preview", "plan": plan}
 
-    config = request.app.state.config
+    config = deepcopy(request.app.state.config)
     old_aistudio = config.aistudio_credentials
     old_antigravity = config.antigravity_credentials
     aistudio, antigravity, result = merge_credential_bundle(
@@ -287,7 +281,7 @@ async def import_credentials(payload: CredentialImportIn, request: Request):
 
 @router.post("/credentials/aistudio")
 async def add_aistudio(cred: AIStudioCredIn, request: Request):
-    config = request.app.state.config
+    config = deepcopy(request.app.state.config)
     if not cred.api_key.strip():
         return JSONResponse(status_code=422, content={"error": {"message": "api_key is required"}})
     # Check for duplicate ID
@@ -304,7 +298,7 @@ async def add_aistudio(cred: AIStudioCredIn, request: Request):
 
 @router.put("/credentials/aistudio/{cred_id}")
 async def update_aistudio(cred_id: str, cred: AIStudioCredUpdate, request: Request):
-    config = request.app.state.config
+    config = deepcopy(request.app.state.config)
     for i, c in enumerate(config.aistudio_credentials):
         if c.id == cred_id:
             api_key = cred.api_key.strip() if cred.api_key and cred.api_key.strip() else c.api_key
@@ -323,7 +317,7 @@ async def update_aistudio(cred_id: str, cred: AIStudioCredUpdate, request: Reque
 
 @router.delete("/credentials/aistudio/{cred_id}")
 async def delete_aistudio(cred_id: str, request: Request):
-    config = request.app.state.config
+    config = deepcopy(request.app.state.config)
     before = len(config.aistudio_credentials)
     config.aistudio_credentials = [c for c in config.aistudio_credentials if c.id != cred_id]
     if len(config.aistudio_credentials) == before:
@@ -382,17 +376,17 @@ async def _complete_antigravity_oauth(request: Request, state: str):
     if claimed is None:
         return manager.snapshot(state) or snapshot
 
-    code, redirect_uri, code_verifier = claimed
+    code, redirect_uri, code_verifier, client_id, client_secret = claimed
     try:
         bundle = await exchange_oauth_code(
             code,
             redirect_uri,
             manager.proxy,
-            manager.client_id,
-            manager.client_secret,
+            client_id,
+            client_secret,
             code_verifier,
         )
-        config = request.app.state.config
+        config = deepcopy(request.app.state.config)
         credential_id = _oauth_credential_id(config, bundle.account)
         config.antigravity_credentials.append(AntigravityCredential(
             id=credential_id,
@@ -439,8 +433,8 @@ async def complete_antigravity_oauth(payload: AntigravityOAuthCompleteIn, reques
 
 @router.post("/credentials/antigravity")
 async def add_antigravity(cred: AntigravityCredIn, request: Request):
-    config = request.app.state.config
-    if not all(value.strip() for value in (cred.client_id, cred.client_secret, cred.refresh_token)):
+    config = deepcopy(request.app.state.config)
+    if not all(value.strip() for value in (cred.client_id, cred.refresh_token)):
         return JSONResponse(status_code=422, content={"error": {"message": "OAuth credentials are required"}})
     if any(c.id == cred.id for c in config.antigravity_credentials):
         return JSONResponse(status_code=409, content={"error": {"message": f"Credential '{cred.id}' already exists"}})
@@ -463,14 +457,16 @@ async def add_antigravity(cred: AntigravityCredIn, request: Request):
 
 @router.put("/credentials/antigravity/{cred_id}")
 async def update_antigravity(cred_id: str, cred: AntigravityCredUpdate, request: Request):
-    config = request.app.state.config
+    config = deepcopy(request.app.state.config)
     for i, c in enumerate(config.antigravity_credentials):
         if c.id == cred_id:
             client_id = cred.client_id.strip() if cred.client_id and cred.client_id.strip() else c.client_id
-            client_secret = cred.client_secret.strip() if cred.client_secret and cred.client_secret.strip() else c.client_secret
+            client_secret = c.client_secret if cred.client_secret is None else cred.client_secret.strip()
             refresh_token = cred.refresh_token.strip() if cred.refresh_token and cred.refresh_token.strip() else c.refresh_token
             account = c.account if cred.account is None else cred.account.strip()
-            if not client_id or not client_secret or not refresh_token:
+            if client_id != c.client_id and cred.client_secret is None:
+                return JSONResponse(status_code=422, content={"error": {"message": "Supply client_secret (empty for a public client) when changing client_id"}})
+            if not client_id or not refresh_token:
                 return JSONResponse(status_code=422, content={"error": {"message": "OAuth credentials are required"}})
             oauth_changed = (client_id, client_secret, refresh_token) != (
                 c.client_id, c.client_secret, c.refresh_token,
@@ -506,7 +502,7 @@ async def update_antigravity(cred_id: str, cred: AntigravityCredUpdate, request:
 
 @router.delete("/credentials/antigravity/{cred_id}")
 async def delete_antigravity(cred_id: str, request: Request):
-    config = request.app.state.config
+    config = deepcopy(request.app.state.config)
     before = len(config.antigravity_credentials)
     config.antigravity_credentials = [c for c in config.antigravity_credentials if c.id != cred_id]
     if len(config.antigravity_credentials) == before:

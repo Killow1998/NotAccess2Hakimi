@@ -214,3 +214,19 @@ async def test_status_exposes_runtime_health_fields():
     assert status["last_model"] == "gemini-3.7-flash"
     assert status["last_tested_at"] is None
     assert status["last_test_ok"] is None
+@pytest.mark.parametrize("state", [CredentialState.COOLDOWN, CredentialState.DISABLED])
+def test_reconfigure_preserves_health_and_runtime_credential(state):
+    pool = CredentialPool()
+    credential = _make_ag("same")
+    pool.add_antigravity(credential)
+    pooled = pool.all_credentials[0]
+    pooled.state = state
+    pooled.cooldown_until = time.time() + 100
+    credential.access_token = "refreshed-token"
+    credential.expires_at = 9999999999.0
+    replacements = [_make_ag("same")]
+    pool.reconfigure([], replacements, 120)
+    assert pool.all_credentials[0] is pooled
+    assert pooled.state is state
+    assert replacements[0] is credential
+    assert replacements[0].access_token == "refreshed-token"

@@ -42,6 +42,16 @@ DEFAULT_CALLBACK_PORT = 51121
 SESSION_TTL_SECONDS = 300
 
 
+def resolve_oauth_client(config) -> tuple[str, str]:
+    """Select an entire client pair; an empty secret denotes a public client."""
+    credential = next(iter(config.antigravity_credentials), None)
+    if credential and credential.client_id.strip():
+        return credential.client_id.strip(), credential.client_secret.strip()
+    if config.antigravity_client_id.strip():
+        return config.antigravity_client_id.strip(), config.antigravity_client_secret.strip()
+    return OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET
+
+
 @dataclass(frozen=True)
 class AntigravityOAuthBundle:
     client_id: str
@@ -67,6 +77,8 @@ class _OAuthSession:
     account: str = ""
     mode: str = "local"
     code_verifier: str = ""
+    client_id: str = ""
+    client_secret: str = ""
 
 
 class _CallbackServer(ThreadingHTTPServer):
@@ -114,10 +126,14 @@ class AntigravityOAuthManager:
         self.proxy = proxy
         self.callback_port = callback_port
         self.client_id = client_id.strip() or OAUTH_CLIENT_ID
-        self.client_secret = client_secret.strip() or OAUTH_CLIENT_SECRET
+        self.client_secret = client_secret.strip()
         self._lock = threading.Lock()
         self._session: _OAuthSession | None = None
         self._server: _CallbackServer | None = None
+
+    def configure_client(self, client_id: str, client_secret: str) -> None:
+        with self._lock:
+            self.client_id, self.client_secret = client_id, client_secret
 
     def start(self, mode: str = "remote") -> dict[str, object]:
         if mode not in {"local", "remote"}:
@@ -158,6 +174,8 @@ class AntigravityOAuthManager:
                 expires_at=now + SESSION_TTL_SECONDS,
                 mode=mode,
                 code_verifier=code_verifier,
+                client_id=self.client_id,
+                client_secret=self.client_secret,
             )
             self._session = session
             self._server = server
@@ -189,6 +207,7 @@ class AntigravityOAuthManager:
             if error:
                 session.error = error[:160]
                 session.status = "error"
+                session.code_verifier = session.client_secret = ""
             elif code:
                 session.code = code
             else:
@@ -224,6 +243,7 @@ class AntigravityOAuthManager:
             if session.expires_at <= time.time() and session.status in {"pending", "processing"}:
                 session.status = "error"
                 session.error = "OAuth login timed out"
+                session.code = session.code_verifier = session.client_secret = ""
             return {
                 "status": "processing" if session.processing else session.status,
                 "credential_id": session.credential_id,
@@ -231,15 +251,17 @@ class AntigravityOAuthManager:
                 "message": session.error,
             }
 
-    def claim_code(self, state: str) -> tuple[str, str, str] | None:
+    def claim_code(self, state: str) -> tuple[str, str, str, str, str] | None:
         with self._lock:
             session = self._session
-            if not session or session.state != state or session.status != "pending" or not session.code:
+            if (not session or session.state != state or session.status != "pending"
+                    or session.expires_at <= time.time() or not session.code):
                 return None
             if session.processing:
                 return None
             session.processing = True
-            return session.code, session.redirect_uri, session.code_verifier
+            return (session.code, session.redirect_uri, session.code_verifier,
+                    session.client_id, session.client_secret)
 
     def complete(self, state: str, credential_id: str, account: str) -> None:
         with self._lock:
@@ -251,6 +273,7 @@ class AntigravityOAuthManager:
             session.credential_id = credential_id
             session.account = account
             session.code = ""
+            session.code_verifier = session.client_secret = ""
             self._stop_server_locked()
 
     def fail(self, state: str, message: str) -> None:
@@ -262,10 +285,12 @@ class AntigravityOAuthManager:
             session.processing = False
             session.error = message[:240]
             session.code = ""
+            session.code_verifier = session.client_secret = ""
             self._stop_server_locked()
 
     def close(self) -> None:
         with self._lock:
+            self._session = None
             self._stop_server_locked()
 
     def _stop_server_locked(self) -> None:
