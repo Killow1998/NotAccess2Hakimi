@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from tests.platform_assertions import assert_storage_access
+
 import json
+import shlex
 import sys
 
 import httpx
@@ -46,7 +49,7 @@ def test_doctor_reports_missing_config_with_next_action(tmp_path, capsys):
     assert payload["checks"][0]["name"] == "config_file"
     assert payload["checks"][0]["status"] == "error"
     assert payload["next_actions"] == [
-        f"Run hakimi serve --config {config_path.resolve()}, copy the generated "
+        f"Run hakimi serve --config {shlex.quote(str(config_path.resolve()))}, copy the generated "
         "deployment key from that terminal, then open http://127.0.0.1:12345 and log in"
     ]
 
@@ -221,7 +224,7 @@ def test_serve_provisions_missing_key_before_non_loopback_start(tmp_path, capsys
     assert len(persisted.auth_token) >= 50
     assert persisted.auth_token in output
     assert "generated deployment API key" in output
-    assert config_path.stat().st_mode & 0o777 == 0o600
+    assert_storage_access(config_path)
 
 
 def test_serve_creates_missing_config_with_initial_key(tmp_path, capsys, monkeypatch):
@@ -241,7 +244,7 @@ def test_serve_creates_missing_config_with_initial_key(tmp_path, capsys, monkeyp
     assert started == [True]
     assert persisted.auth_token.startswith("hakimi_")
     assert persisted.auth_token in output
-    assert config_path.stat().st_mode & 0o777 == 0o600
+    assert_storage_access(config_path)
 
 
 def test_serve_reuses_existing_key_without_printing_it(tmp_path, capsys, monkeypatch):
@@ -455,9 +458,9 @@ def test_doctor_live_requires_selection_for_multiple_accounts(tmp_path, capsys, 
         ],
     }
     assert payload["next_actions"][:2] == [
-        f"Run hakimi doctor --config {config_path.resolve()} --live "
+        f"Run hakimi doctor --config {shlex.quote(str(config_path.resolve()))} --live "
         "--credential aistudio:ai-main",
-        f"Run hakimi doctor --config {config_path.resolve()} --live "
+        f"Run hakimi doctor --config {shlex.quote(str(config_path.resolve()))} --live "
         "--credential antigravity:agy-main",
     ]
 
@@ -602,7 +605,7 @@ def test_verify_writes_private_redacted_report(tmp_path, capsys, monkeypatch):
     assert exit_code == 0
     assert json.loads(capsys.readouterr().out) == report
     assert json.loads(report_path.read_text(encoding="utf-8")) == report
-    assert report_path.stat().st_mode & 0o777 == 0o600
+    assert_storage_access(report_path)
     serialized = report_path.read_text(encoding="utf-8")
     for secret in (
         "private-account@example.com",

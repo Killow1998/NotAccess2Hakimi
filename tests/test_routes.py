@@ -54,7 +54,7 @@ async def test_healthz():
     assert data["in_flight_requests"] == 0
     assert data["proxy_source"] in {"config", "environment", "system", "direct"}
     assert data["auth_enabled"] is False
-    assert data["diagnostics"]["path"] == "state/diagnostics.jsonl"
+    assert Path(data["diagnostics"]["path"]) == Path("state") / "diagnostics.jsonl"
     assert isinstance(data["diagnostics"]["enabled"], bool)
 
 

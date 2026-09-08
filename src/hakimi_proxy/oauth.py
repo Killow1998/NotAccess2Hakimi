@@ -1,7 +1,7 @@
 """Browser OAuth flow for Antigravity credentials.
 
 The flow uses Google's installed-app OAuth client with PKCE. The server
-creates a listener-free localhost callback URL, so the authorization link can
+creates a listener-free Antigravity callback URL, so the authorization link can
 be opened on any Google-accessible device; only the short-lived callback code
 is returned to NA2H for exchange and storage.
 """
@@ -21,11 +21,15 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
 
-OAUTH_CLIENT_ID = os.environ.get(
-    "HAKIMI_ANTIGRAVITY_CLIENT_ID",
-    "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
+DEFAULT_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
+# Shared installed-app client metadata, not an account credential.
+# Source: router-for-me/CLIProxyAPI, internal/auth/antigravity/constants.go.
+DEFAULT_CLIENT_SECRET = "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"
+OAUTH_CLIENT_ID = os.environ.get("HAKIMI_ANTIGRAVITY_CLIENT_ID", DEFAULT_CLIENT_ID)
+OAUTH_CLIENT_SECRET = os.environ.get(
+    "HAKIMI_ANTIGRAVITY_CLIENT_SECRET",
+    DEFAULT_CLIENT_SECRET if OAUTH_CLIENT_ID == DEFAULT_CLIENT_ID else "",
 )
-OAUTH_CLIENT_SECRET = os.environ.get("HAKIMI_ANTIGRAVITY_CLIENT_SECRET", "")
 OAUTH_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
 OAUTH_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo?alt=json"
@@ -42,13 +46,22 @@ DEFAULT_CALLBACK_PORT = 51121
 SESSION_TTL_SECONDS = 300
 
 
+class OAuthConfigurationError(RuntimeError):
+    pass
+
+
+def validate_oauth_client(client_id: str, client_secret: str) -> None:
+    if not client_id.strip() or (client_id == DEFAULT_CLIENT_ID and not client_secret.strip()):
+        raise OAuthConfigurationError('Antigravity OAuth client configuration is incomplete. Configure the matching client secret before signing in.')
+
+
 def resolve_oauth_client(config) -> tuple[str, str]:
     """Select an entire client pair; an empty secret denotes a public client."""
+    if config.antigravity_client_id.strip():
+        return config.antigravity_client_id.strip(), config.antigravity_client_secret.strip()
     credential = next(iter(config.antigravity_credentials), None)
     if credential and credential.client_id.strip():
         return credential.client_id.strip(), credential.client_secret.strip()
-    if config.antigravity_client_id.strip():
-        return config.antigravity_client_id.strip(), config.antigravity_client_secret.strip()
     return OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET
 
 
@@ -140,6 +153,7 @@ class AntigravityOAuthManager:
             raise ValueError("OAuth mode must be 'local' or 'remote'")
         now = time.time()
         with self._lock:
+            validate_oauth_client(self.client_id, self.client_secret)
             if (
                 self._session
                 and self._session.mode == mode
@@ -354,6 +368,7 @@ async def exchange_oauth_code(
     """Exchange a one-time authorization code and fetch the account email."""
     if not code or not redirect_uri:
         raise RuntimeError("OAuth callback is incomplete")
+    validate_oauth_client(client_id, client_secret)
     async with httpx.AsyncClient(proxy=proxy or None) as client:
         token_data = {
             "code": code,
@@ -361,9 +376,7 @@ async def exchange_oauth_code(
             "redirect_uri": redirect_uri,
             "grant_type": "authorization_code",
         }
-        # PKCE makes the installed/public client flow independent of an
-        # account-specific secret. Keep sending a configured app secret for
-        # deployments that still use one.
+        # PKCE and client authentication are independent requirements.
         if client_secret:
             token_data["client_secret"] = client_secret
         if code_verifier:

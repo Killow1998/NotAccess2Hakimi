@@ -131,6 +131,8 @@ async def _run_chat_completion(
     else:
         adapter = _select_adapter(model, aistudio, antigravity)
 
+    journal = getattr(request.app.state, "diagnostics", None)
+    request_id = getattr(getattr(request, "state", None), "request_id", "")
     attempt = 0
     attempt_limit = 1 if credential_id else max_retries
     last_failure = UpstreamFailure("no_available_credentials", "All retries exhausted: No available credentials")
@@ -163,7 +165,7 @@ async def _run_chat_completion(
             resp = await adapter.forward(body, cred, stream, client)
             if resp.status_code != 200:
                 failure = await classify_streaming_response(resp)
-                _apply_failure(pool, cred, failure, model, started)
+                _apply_failure(pool, cred, failure, model, started, journal=journal, request_id=request_id)
                 last_failure = failure
                 if failure.retryable or failure.credential_action != "none":
                     continue
@@ -182,6 +184,8 @@ async def _run_chat_completion(
                     prefetched_lines=prefetched_lines,
                     pool=pool,
                     started_at=started,
+                    journal=journal,
+                    request_id=request_id,
                 )
                 stream_owns_resources = True
                 return result
@@ -194,7 +198,7 @@ async def _run_chat_completion(
         except Exception as exc:
             failure = classify_exception(exc)
             logger.warning("Request to %s failed: %s", cred.id, failure.message)
-            _apply_failure(pool, cred, failure, model, started)
+            _apply_failure(pool, cred, failure, model, started, journal=journal, request_id=request_id)
             last_failure = failure
             if failure.retryable or failure.credential_action != "none":
                 continue
@@ -211,13 +215,23 @@ def _latency_ms(started: float) -> int:
 
 
 def _failure_response(failure: UpstreamFailure, status_code: int) -> JSONResponse:
-    return JSONResponse(status_code=status_code, content={"error": failure.public()})
+    headers = {"Retry-After": str(max(1, failure.retry_after or 2))} if status_code == 503 else {}
+    return JSONResponse(status_code=status_code, content={"error": failure.public()}, headers=headers)
 
 
-def _apply_failure(pool: CredentialPool, cred: PooledCredential, failure: UpstreamFailure, model: str, started: float) -> None:
+def _apply_failure(pool: CredentialPool, cred: PooledCredential, failure: UpstreamFailure, model: str, started: float, *, journal=None, request_id="") -> None:
+    if journal is not None:
+        journal.record("upstream_failure", level="warning", request_id=request_id,
+                       model=model, failure_type=failure.type,
+                       upstream_status=failure.upstream_status or 0,
+                       cooldown_scope=failure.cooldown_scope,
+                       duration_ms=_latency_ms(started))
     pool.mark_failure(cred, failure.type, failure.message, latency_ms=_latency_ms(started), model=model)
     if failure.credential_action == "cooldown":
-        pool.mark_cooldown(cred, failure.retry_after)
+        delay = failure.retry_after
+        if delay is None and failure.type in {"upstream_server_error", "upstream_transport_error"}:
+            delay = 2
+        pool.mark_cooldown(cred, delay, model=model if failure.cooldown_scope == "model" else None)
     elif failure.credential_action == "disable":
         pool.mark_disabled(cred)
 
@@ -234,13 +248,14 @@ async def _acquire_for_request(
 ) -> tuple[UpstreamAdapter, PooledCredential]:
     """Prefer the selected adapter, then try a compatible fallback before waiting."""
     if adapter.kind.startswith('remote:'):
-        return adapter, await pool.acquire(kind=adapter.kind, timeout_seconds=max(0, deadline - time.monotonic()))
+        return adapter, await pool.acquire(kind=adapter.kind, timeout_seconds=max(0, deadline - time.monotonic()), model=model)
     if credential_id:
         remaining = max(0.0, deadline - time.monotonic())
         return adapter, await pool.acquire(
             kind=adapter.kind,
             credential_id=credential_id,
             timeout_seconds=remaining,
+            model=model,
         )
     ordered = [adapter]
     other = antigravity if adapter.kind == "aistudio" else aistudio
@@ -249,9 +264,9 @@ async def _acquire_for_request(
     busy: list[UpstreamAdapter] = []
     for candidate in ordered:
         try:
-            return candidate, await pool.acquire(kind=candidate.kind, timeout_seconds=0)
+            return candidate, await pool.acquire(kind=candidate.kind, timeout_seconds=0, model=model)
         except CredentialUnavailable as exc:
-            if exc.reason == "busy_timeout":
+            if exc.reason in {"busy_timeout", "cooldown"}:
                 busy.append(candidate)
 
     for candidate in busy:
@@ -259,7 +274,7 @@ async def _acquire_for_request(
         if remaining <= 0:
             break
         try:
-            return candidate, await pool.acquire(kind=candidate.kind, timeout_seconds=remaining)
+            return candidate, await pool.acquire(kind=candidate.kind, timeout_seconds=remaining, model=model)
         except CredentialUnavailable:
             continue
     raise CredentialUnavailable("busy_timeout" if busy else "unavailable")
@@ -353,6 +368,8 @@ def _stream_response(
     prefetched_lines: list[str] | None = None,
     pool: CredentialPool | None = None,
     started_at: float | None = None,
+    journal=None,
+    request_id="",
 ) -> StreamingResponse:
     """Handle a streaming response: forward SSE, capture usage, record."""
     chunk_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
@@ -422,7 +439,7 @@ def _stream_response(
         except Exception as exc:
             failure = classify_exception(exc)
             if pool is not None:
-                _apply_failure(pool, cred, failure, model, started_at or time.perf_counter())
+                _apply_failure(pool, cred, failure, model, started_at or time.perf_counter(), journal=journal, request_id=request_id)
             if not saw_upstream_event:
                 raise
             error = {

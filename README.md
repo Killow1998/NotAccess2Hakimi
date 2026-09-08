@@ -354,6 +354,9 @@ headless fallback. When `project` is empty, Hakimi discovers it with
 that credential explicitly sets `auto_onboard: true`. Cloud Code API endpoints
 are tried in fallback order (daily -> prod).
 
+Fresh installations include the shared Antigravity installed-app client pair;
+no Antigravity installation or existing account configuration is required.
+The client metadata follows [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI/blob/main/internal/auth/antigravity/constants.go).
 Hakimi reads the application-level client ID and secret from the local config
 when present; environment overrides are also available for deployments using a
 different OAuth client. These values are not account credentials and are not

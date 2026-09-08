@@ -230,3 +230,97 @@ def test_reconfigure_preserves_health_and_runtime_credential(state):
     assert pooled.state is state
     assert replacements[0] is credential
     assert replacements[0].access_token == "refreshed-token"
+
+
+@pytest.mark.asyncio
+async def test_antigravity_parallel_generation_and_independent_quota():
+    pool = CredentialPool()
+    pool.add_antigravity(_make_ag("ag"))
+    leases = [await pool.acquire(kind="antigravity") for _ in range(12)]
+    quota = await pool.acquire(kind="antigravity", quota=True, timeout_seconds=0)
+    assert quota.in_flight == 12
+    with pytest.raises(CredentialUnavailable):
+        await pool.acquire(kind="antigravity", quota=True, timeout_seconds=0)
+    with pytest.raises(ValueError):
+        pool.validate_reconfiguration([], [])
+    await pool.release(quota, quota=True)
+    for lease in leases:
+        await pool.release(lease)
+    assert quota.in_flight == quota.quota_in_flight == 0
+
+
+@pytest.mark.asyncio
+async def test_router_waits_for_cooling_account_and_quota_can_still_refresh():
+    from hakimi_proxy.routes.chat import _acquire_for_request
+    from hakimi_proxy.adapters.aistudio import AIStudioAdapter
+    from hakimi_proxy.adapters.antigravity import AntigravityAdapter
+    pool = CredentialPool()
+    pool.add_antigravity(_make_ag("ag"))
+    cred = pool.all_credentials[0]
+    pool.mark_cooldown(cred, retry_after=0.05)
+    quota = await pool.acquire(kind="antigravity", quota=True, timeout_seconds=0)
+    await pool.release(quota, quota=True)
+    ag = AntigravityAdapter()
+    _, lease = await _acquire_for_request(pool, ag, AIStudioAdapter(), ag,
+        "gemini-3.8-flash", time.monotonic() + 1)
+    assert lease is cred
+    await pool.release(lease)
+
+
+def test_transient_failure_backoff_does_not_use_rate_limit_cooldown():
+    from hakimi_proxy.routes.chat import _apply_failure, _failure_response
+    from hakimi_proxy.errors import UpstreamFailure
+    pool = CredentialPool(cooldown_seconds=60)
+    pool.add_antigravity(_make_ag("ag"))
+    cred = pool.all_credentials[0]
+    failure = UpstreamFailure("upstream_server_error", "temporary", 503, True, "cooldown")
+    _apply_failure(pool, cred, failure, "gemini", time.perf_counter())
+    assert 0 < cred.cooldown_until - time.time() <= 2
+    limited = UpstreamFailure("upstream_rate_limit", "limited", 429, True, "cooldown", 120)
+    _apply_failure(pool, cred, limited, "gemini", time.perf_counter())
+    assert 119 < cred.cooldown_until - time.time() <= 120
+    assert _failure_response(limited, 503).headers["retry-after"] == "120"
+
+
+@pytest.mark.asyncio
+async def test_model_cooldown_does_not_block_other_models_or_quota():
+    pool = CredentialPool()
+    pool.add_antigravity(_make_ag("one"))
+    cred = pool.all_credentials[0]
+    pool.mark_cooldown(cred, 30, model="gemini-3.8-flash")
+    with pytest.raises(CredentialUnavailable):
+        await pool.acquire(model="gemini-3.8-flash", timeout_seconds=0)
+    other = await pool.acquire(model="gemini-3.7-flash", timeout_seconds=0)
+    await pool.release(other)
+    quota = await pool.acquire(quota=True, timeout_seconds=0)
+    await pool.release(quota, quota=True)
+    pool.mark_cooldown(cred, 0, model="gemini-3.8-flash")
+    recovered = await pool.acquire(model="gemini-3.8-flash", timeout_seconds=0)
+    await pool.release(recovered)
+    pool.mark_cooldown(cred, 30)
+    with pytest.raises(CredentialUnavailable):
+        await pool.acquire(model="gemini-3.7-flash", timeout_seconds=0)
+
+
+def test_model_cooldown_requires_explicit_upstream_dimensions():
+    import httpx
+    from hakimi_proxy.errors import classify_response
+    generic = classify_response(httpx.Response(429, json={"error": {"message": "model busy"}}))
+    assert generic.cooldown_scope == "account"
+    scoped = classify_response(httpx.Response(429, json={"error": {"details": [
+        {"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [
+            {"quotaDimensions": {"model": "gemini-3.8-flash", "location": "global"}}
+        ]}
+    ]}}))
+    assert scoped.cooldown_scope == "model"
+    server_error = classify_response(httpx.Response(503, json={"error": {"details": [{"metadata": {"model": "x"}}]}}))
+    assert server_error.cooldown_scope == "account"
+
+
+def test_mixed_quota_dimensions_keep_account_cooldown():
+    import httpx
+    from hakimi_proxy.errors import classify_response
+    failure = classify_response(httpx.Response(429, json={"error": {"details": [{"violations": [
+        {"quotaDimensions": {"model": "gemini-3.8-flash"}}, {"quotaDimensions": {"project": "fixture"}}
+    ]}]}}))
+    assert failure.cooldown_scope == "account"

@@ -7,6 +7,25 @@ from hakimi_proxy import oauth as oauth_module
 from hakimi_proxy.oauth import AntigravityOAuthManager, ANTIGRAVITY_CALLBACK_URI, _OAuthSession
 
 
+def test_clean_install_has_complete_client_without_agy(monkeypatch):
+    from hakimi_proxy.config import ProxyConfig
+    import subprocess
+
+    def unexpected_process(*args, **kwargs):
+        raise AssertionError("OAuth must not invoke an installed application")
+
+    monkeypatch.setattr(subprocess, "Popen", unexpected_process)
+    monkeypatch.setattr(oauth_module, "OAUTH_CLIENT_ID", oauth_module.DEFAULT_CLIENT_ID)
+    monkeypatch.setattr(oauth_module, "OAUTH_CLIENT_SECRET", oauth_module.DEFAULT_CLIENT_SECRET)
+    client_id, client_secret = oauth_module.resolve_oauth_client(ProxyConfig())
+    assert client_secret
+    manager = AntigravityOAuthManager(client_id=client_id, client_secret=client_secret)
+    session = manager.start("remote")
+    assert client_secret not in str(session)
+    assert manager.record_callback(session["state"], "test-code", "")
+    assert manager.claim_code(session["state"])[3:] == (client_id, client_secret)
+
+
 def test_manual_callback_accepts_full_url_and_claims_code_once():
     manager = AntigravityOAuthManager(callback_port=0, client_secret="client-secret")
     manager._session = _OAuthSession(
@@ -47,7 +66,7 @@ def test_remote_start_does_not_bind_callback_listener(monkeypatch):
         raise AssertionError("remote OAuth must not bind a callback socket")
 
     monkeypatch.setattr(oauth_module, "_CallbackServer", unexpected_listener)
-    manager = AntigravityOAuthManager(client_secret="")
+    manager = AntigravityOAuthManager(client_id="public-client", client_secret="")
 
     session = manager.start(mode="remote")
 
@@ -100,4 +119,19 @@ def test_client_pair_precedence_never_fills_public_secret(monkeypatch):
     assert oauth_module.resolve_oauth_client(config) == ("app-id", "")
     config.antigravity_client_secret = "app-secret"
     config.antigravity_credentials = [AntigravityCredential("public", "account-id", "", "refresh")]
+    assert oauth_module.resolve_oauth_client(config) == ('app-id', 'app-secret')
+    config.antigravity_client_id = ''
     assert oauth_module.resolve_oauth_client(config) == ("account-id", "")
+
+
+def test_default_client_missing_secret_fails_before_authorization():
+    import pytest
+    manager = AntigravityOAuthManager(client_id=oauth_module.DEFAULT_CLIENT_ID, client_secret='')
+    with pytest.raises(oauth_module.OAuthConfigurationError):
+        manager.start('remote')
+    assert manager._session is None
+    manager.configure_client(oauth_module.DEFAULT_CLIENT_ID, 'configured-secret')
+    session = manager.start('remote')
+    assert 'configured-secret' not in str(session)
+    manager.record_callback(session['state'], 'code', '')
+    assert manager.claim_code(session['state'])[4] == 'configured-secret'

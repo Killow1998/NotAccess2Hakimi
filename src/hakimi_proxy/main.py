@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import re
+import uuid
 import sys
 import time
 from contextlib import asynccontextmanager
@@ -103,6 +105,9 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def record_request_diagnostic(request, call_next):
+        supplied = request.headers.get("X-EMP-Request-ID", "")
+        request_id = supplied if re.fullmatch(r"[0-9a-f]{16,32}", supplied) else uuid.uuid4().hex
+        request.state.request_id = request_id
         started = time.perf_counter()
         try:
             response = await call_next(request)
@@ -110,6 +115,7 @@ def create_app() -> FastAPI:
             app.state.diagnostics.record(
                 "http_request",
                 level="error",
+                request_id=request_id,
                 method=request.method,
                 route="<unmatched>",
                 status=500,
@@ -126,11 +132,13 @@ def create_app() -> FastAPI:
             app.state.diagnostics.record(
                 "http_request",
                 level="warning" if response.status_code >= 400 else "info",
+                request_id=request_id,
                 method=request.method,
                 route=route_path,
                 status=response.status_code,
                 duration_ms=round((time.perf_counter() - started) * 1000),
             )
+        response.headers["X-Request-ID"] = request_id
         return response
 
     # Register routes

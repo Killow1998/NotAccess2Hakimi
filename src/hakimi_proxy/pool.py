@@ -31,8 +31,10 @@ class PooledCredential(Generic[T]):
     state: CredentialState = CredentialState.ACTIVE
     last_used: float = 0.0
     cooldown_until: float = 0.0
+    model_cooldowns: dict[str, float] = field(default_factory=dict)
     failure_count: int = 0
     in_flight: int = 0
+    quota_in_flight: int = 0
     last_success_at: float = 0.0
     last_failure_at: float = 0.0
     last_error_type: str = ""
@@ -101,7 +103,7 @@ class CredentialPool:
             raise ValueError('Remote IDs must be unique')
         for pc in self._credentials:
             replacement = desired.get((pc.kind, pc.id))
-            if pc.in_flight and (replacement is None or self._identity(replacement) != self._identity(pc.credential)):
+            if (pc.in_flight or pc.quota_in_flight) and (replacement is None or self._identity(replacement) != self._identity(pc.credential)):
                 raise ValueError("Wait for active requests before replacing or deleting their credentials")
 
     def reconfigure(self, aistudio, antigravity, cooldown_seconds: int, remotes=None) -> None:
@@ -170,8 +172,10 @@ class CredentialPool:
         *,
         credential_id: str | None = None,
         timeout_seconds: float = 30.0,
+        quota: bool = False,
+        model: str | None = None,
     ) -> PooledCredential:
-        """Lease one idle active credential, waiting up to ``timeout_seconds``."""
+        """Track requests; wait for cooldown or exclusive non-Antigravity capacity."""
         deadline = time.monotonic() + max(0.0, timeout_seconds)
         while True:
             async with self._condition:
@@ -186,7 +190,7 @@ class CredentialPool:
                     if kind and pc.kind != kind:
                         continue
                     matched = True
-                    if pc.state == CredentialState.COOLDOWN:
+                    if pc.state == CredentialState.COOLDOWN and not quota:
                         if now >= pc.cooldown_until:
                             pc.state = CredentialState.ACTIVE
                             pc.failure_count = 0
@@ -194,23 +198,32 @@ class CredentialPool:
                         else:
                             next_cooldown = min(next_cooldown or pc.cooldown_until, pc.cooldown_until)
                             continue
-                    if pc.state != CredentialState.ACTIVE:
+                    if pc.state == CredentialState.DISABLED:
+                        continue
+                    pc.model_cooldowns = {name: until for name, until in pc.model_cooldowns.items() if until > now}
+                    model_deadline = pc.model_cooldowns.get(model, 0.0) if model and not quota else 0.0
+                    if model_deadline > now:
+                        next_cooldown = min(next_cooldown or model_deadline, model_deadline)
                         continue
                     active_exists = True
-                    if pc.in_flight == 0:
+                    available = pc.quota_in_flight == 0 if quota else (pc.kind == "antigravity" or pc.in_flight == 0)
+                    if available:
                         candidates.append(pc)
 
                 if candidates:
                     chosen = min(candidates, key=lambda c: c.last_used)
                     chosen.last_used = now
-                    chosen.in_flight = 1
+                    if quota:
+                        chosen.quota_in_flight += 1
+                    else:
+                        chosen.in_flight += 1
                     return chosen
 
                 remaining = deadline - time.monotonic()
                 if not matched or (not active_exists and next_cooldown is None):
                     raise CredentialUnavailable("unavailable")
                 if remaining <= 0:
-                    reason = "busy_timeout" if active_exists else "unavailable"
+                    reason = "busy_timeout" if active_exists else "cooldown"
                     raise CredentialUnavailable(reason)
                 if next_cooldown is not None:
                     remaining = min(remaining, max(0.0, next_cooldown - now))
@@ -221,10 +234,12 @@ class CredentialPool:
                 except asyncio.TimeoutError:
                     continue
 
-    async def release(self, pc: PooledCredential) -> None:
+    async def release(self, pc: PooledCredential, *, quota: bool = False) -> None:
         """Release a lease and wake waiting callers."""
         async with self._condition:
-            if pc.in_flight > 0:
+            if quota:
+                pc.quota_in_flight = max(0, pc.quota_in_flight - 1)
+            elif pc.in_flight > 0:
                 pc.in_flight -= 1
             else:
                 logger.warning("Credential %s released without an active lease", pc.id)
@@ -254,9 +269,13 @@ class CredentialPool:
         if model:
             pc.last_model = model
 
-    def mark_cooldown(self, pc: PooledCredential, retry_after: int | None = None) -> None:
+    def mark_cooldown(self, pc: PooledCredential, retry_after: int | None = None, *, model: str | None = None) -> None:
         """Put a credential into cooldown (429 / rate limit)."""
-        duration = retry_after or self._cooldown_seconds
+        duration = self._cooldown_seconds if retry_after is None else max(0, retry_after)
+        if model:
+            now = time.time()
+            pc.model_cooldowns[model] = now + duration
+            return
         pc.state = CredentialState.COOLDOWN
         pc.cooldown_until = time.time() + duration
         pc.failure_count += 1

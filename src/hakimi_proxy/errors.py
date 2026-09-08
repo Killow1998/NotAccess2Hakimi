@@ -21,6 +21,7 @@ class UpstreamFailure:
     credential_action: str = "none"  # none | cooldown | disable
     retry_after: int | None = None
     quota_reset_at: str | None = None
+    cooldown_scope: str = "account"
 
     def public(self) -> dict[str, Any]:
         detail: dict[str, Any] = {
@@ -90,6 +91,7 @@ def classify_response(response: httpx.Response) -> UpstreamFailure:
     retry_after = _seconds(response.headers.get("retry-after"))
     quota_reset_at: str | None = None
     reason = ""
+    quota_scopes = []
     for item in error.get("details", []):
         if not isinstance(item, dict):
             continue
@@ -98,18 +100,28 @@ def classify_response(response: httpx.Response) -> UpstreamFailure:
             retry_after = _seconds(item.get("retryDelay"))
         metadata = item.get("metadata")
         if isinstance(metadata, dict):
+            dimensions = metadata.get("quota_dimensions")
+            if isinstance(dimensions, dict) and dimensions.get("model"):
+                quota_scopes.append(True)
             if retry_after is None:
                 retry_after = _seconds(metadata.get("quotaResetDelay"))
             if metadata.get("quotaResetTimeStamp"):
                 quota_reset_at = str(metadata["quotaResetTimeStamp"])
 
+        for violation in item.get("violations", []):
+            if isinstance(violation, dict):
+                dimensions = violation.get("quotaDimensions", {})
+                quota_scopes.append(isinstance(dimensions, dict) and bool(dimensions.get("model")))
+
+    model_scoped = bool(quota_scopes) and all(quota_scopes)
     if status in (401, 403):
         return UpstreamFailure(
             "upstream_auth_error", safe_message, status, False, "disable", retry_after, quota_reset_at
         )
     if status == 429:
         return UpstreamFailure(
-            "upstream_rate_limit", safe_message, status, True, "cooldown", retry_after, quota_reset_at
+            "upstream_rate_limit", safe_message, status, True, "cooldown", retry_after, quota_reset_at,
+            "model" if model_scoped else "account"
         )
     if status >= 500:
         return UpstreamFailure(
@@ -119,7 +131,8 @@ def classify_response(response: httpx.Response) -> UpstreamFailure:
         return UpstreamFailure("upstream_request_error", safe_message, status, False, "none", retry_after, quota_reset_at)
     if reason == "RATE_LIMIT_EXCEEDED":
         return UpstreamFailure(
-            "upstream_rate_limit", safe_message, status, True, "cooldown", retry_after, quota_reset_at
+            "upstream_rate_limit", safe_message, status, True, "cooldown", retry_after, quota_reset_at,
+            "model" if model_scoped else "account"
         )
     return UpstreamFailure("upstream_error", safe_message, status, False, "none", retry_after, quota_reset_at)
 

@@ -132,7 +132,7 @@ async def test_busy_providers_share_one_deadline(monkeypatch):
     monkeypatch.setattr(chat.time, "monotonic", lambda: clock[0])
     waits = []
     class BusyPool:
-        async def acquire(self, *, kind, timeout_seconds):
+        async def acquire(self, *, kind, timeout_seconds, model=None):
             waits.append(timeout_seconds)
             clock[0] += timeout_seconds
             raise CredentialUnavailable("busy_timeout")

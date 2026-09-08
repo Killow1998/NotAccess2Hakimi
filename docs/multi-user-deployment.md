@@ -43,6 +43,21 @@ configuring the gateway to forward to itself or creating cycles between gateways
 
 ## VPS deployment
 
+### Client connection options
+
+EMP can use either connection without changing model IDs or API keys:
+
+| Connection | Base URL example | Requirement |
+| --- | --- | --- |
+| Local NA2H or a local port forward | `http://127.0.0.1:12346/v1` | NA2H or the forwarding process must listen on that client computer |
+| Direct VPS IP | `https://<VPS-IP>:8443/v1` | A trusted certificate covering the IP and a reachable HTTPS reverse proxy |
+
+These entries can coexist. Change the Provider's Base URL to switch; a direct
+connection does not require an SSH tunnel. Both paths require a valid API key.
+Keep certificate verification enabled. The port is deployment-specific; do not
+assume port 443 is available. A loopback address always refers to the computer
+running EMP, not the remote VPS. The public API entry does not expose the console.
+
 Use `uv sync --frozen` and a systemd service running as a dedicated unprivileged
 user, with `Restart=on-failure`. Run `uv run --no-sync hakimi serve --config
 /var/lib/na2h/config.yaml` from the installed repository. Bind NA2H to loopback;
@@ -65,3 +80,16 @@ older versions do not understand user keys or enforce these limits.
 Before public deployment, verify real upstream connectivity, streamed tool-call
 round trips, simultaneous users, revocation, and restart persistence from an EMP
 client. Local mock tests are not a substitute for that VPS acceptance test.
+
+
+### Cooldowns and request tracing
+
+A quota failure with explicit model dimensions cools only the requested model on
+that credential. Other models and quota queries remain available. Account-wide,
+mixed, or unspecified quota limits retain account cooldown; authentication failures
+still disable the credential. Retry delays from the upstream remain authoritative.
+
+EMP supplies an opaque `X-EMP-Request-ID`. NA2H records it with the HTTP result and
+upstream failure classification, and returns it as `X-Request-ID`. Requests without
+a valid identifier receive a new identifier. Match this value in both journals to
+trace a failed request without logging its prompt or credentials.

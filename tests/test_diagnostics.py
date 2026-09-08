@@ -1,7 +1,9 @@
 """Privacy and bounds for the local diagnostic journal."""
 
+from tests.platform_assertions import assert_storage_access
+
 import json
-import stat
+import pytest
 
 from httpx2 import ASGITransport, AsyncClient
 
@@ -27,8 +29,8 @@ def test_journal_keeps_only_allowlisted_fields_and_private_modes(tmp_path):
     assert "authorization" not in record
     assert "prompt" not in record
     assert "secret" not in path.read_text(encoding="utf-8")
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
-    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+    assert_storage_access(path)
+    assert_storage_access(path.parent)
 
 
 def test_journal_rotates_at_a_bounded_size(tmp_path):
@@ -52,7 +54,12 @@ def test_journal_refuses_a_symlink_target(tmp_path):
     target = tmp_path / "target.jsonl"
     target.write_text("", encoding="utf-8")
     link = tmp_path / "diagnostics.jsonl"
-    link.symlink_to(target)
+    try:
+        link.symlink_to(target)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symbolic links require Developer Mode or SeCreateSymbolicLinkPrivilege")
+        raise
 
     journal = DiagnosticJournal(link)
 
@@ -74,3 +81,13 @@ async def test_http_journal_records_route_template_without_query(tmp_path):
     assert record["route"] == "/v1/models"
     assert "oauth-secret" not in text
     assert "code" not in text
+
+
+async def test_emp_request_id_reaches_response_and_journal(tmp_path):
+    app = create_app()
+    app.state.diagnostics = DiagnosticJournal(tmp_path / "diagnostics.jsonl")
+    request_id = "0123456789abcdef"
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        response = await client.get("/v1/models", headers={"X-EMP-Request-ID": request_id})
+    assert response.headers["X-Request-ID"] == request_id
+    assert json.loads(app.state.diagnostics.path.read_text())["request_id"] == request_id

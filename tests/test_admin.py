@@ -1,5 +1,7 @@
 """Tests for admin config management API."""
 
+from tests.platform_assertions import assert_storage_access
+
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -39,6 +41,25 @@ def _make_admin_app():
     app.state.max_retries = 3
     app.state.config = ProxyConfig()
     return app
+
+
+async def test_oauth_client_setup_is_private_persistent_and_preflighted(_isolate_config):
+    from hakimi_proxy.oauth import DEFAULT_CLIENT_ID, AntigravityOAuthManager, resolve_oauth_client
+    from hakimi_proxy.config import load_config
+    app = _make_admin_app()
+    app.state.antigravity_oauth = AntigravityOAuthManager(client_id=DEFAULT_CLIENT_ID, client_secret='')
+    response = await _request(app, 'POST', '/api/credentials/antigravity/oauth/start')
+    assert response.status_code == 409
+    assert response.json()['error']['type'] == 'oauth_client_configuration_required'
+    body = {'client_id': DEFAULT_CLIENT_ID, 'client_secret': 'fixture-secret'}
+    assert (await _request(app, 'PUT', '/api/credentials/antigravity/oauth/client', json=body)).status_code == 403
+    response = await _request(app, 'PUT', '/api/credentials/antigravity/oauth/client', base_url='https://testserver', json=body)
+    assert response.status_code == 200
+    assert 'fixture-secret' not in response.text
+    assert resolve_oauth_client(load_config(_isolate_config)) == (DEFAULT_CLIENT_ID, 'fixture-secret')
+    response = await _request(app, 'POST', '/api/credentials/antigravity/oauth/start')
+    assert response.status_code == 200
+    assert 'fixture-secret' not in response.text
 
 
 async def _request(app, method, path, base_url="http://testserver", **kwargs):
@@ -184,7 +205,7 @@ async def test_credential_import_previews_then_applies_with_mode_0600(_isolate_c
     imported_ag = next(c for c in app.state.config.antigravity_credentials if c.id == "new-ag")
     assert imported_ag.access_token == ""
     assert imported_ag.expires_at == 0.0
-    assert _isolate_config.stat().st_mode & 0o777 == 0o600
+    assert_storage_access(_isolate_config)
 
 
 async def test_credential_import_rejects_insecure_or_invalid_bundle():
@@ -422,7 +443,7 @@ async def test_add_antigravity_credential(_isolate_config):
     assert len(app.state.config.antigravity_credentials) == 1
     assert app.state.config.antigravity_credentials[0].project == "project-1"
     assert app.state.config.antigravity_credentials[0].auto_onboard is True
-    assert _isolate_config.stat().st_mode & 0o777 == 0o600
+    assert_storage_access(_isolate_config)
 
 
 async def test_antigravity_oauth_status_creates_credential(monkeypatch, _isolate_config):

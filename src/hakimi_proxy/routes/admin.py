@@ -354,14 +354,40 @@ async def start_antigravity_oauth(
     request: Request,
     payload: AntigravityOAuthStartIn | None = None,
 ):
+    from hakimi_proxy.oauth import OAuthConfigurationError
     try:
         return _oauth_manager(request).start(mode=payload.mode if payload else "remote")
+    except OAuthConfigurationError as exc:
+        return JSONResponse(status_code=409, content={'error': {'type': 'oauth_client_configuration_required', 'message': str(exc)}})
     except (OSError, RuntimeError) as exc:
         logger.warning("Antigravity OAuth callback listener unavailable: %s", exc)
         return JSONResponse(
             status_code=409,
             content={"error": {"message": str(exc)}},
         )
+
+
+class OAuthClientIn(BaseModel):
+    client_id: str
+    client_secret: str
+
+
+@router.put('/credentials/antigravity/oauth/client')
+async def configure_oauth_client(payload: OAuthClientIn, request: Request):
+    from hakimi_proxy.oauth import validate_oauth_client
+    if not _secret_transport_allowed(request):
+        return _secret_transport_error()
+    try:
+        validate_oauth_client(payload.client_id.strip(), payload.client_secret.strip())
+    except RuntimeError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    config = deepcopy(request.app.state.config)
+    config.antigravity_client_id = payload.client_id.strip()
+    config.antigravity_client_secret = payload.client_secret.strip()
+    _load_and_save(request, config)
+    # This explicit application configuration controls subsequent browser logins.
+    _oauth_manager(request).configure_client(config.antigravity_client_id, config.antigravity_client_secret)
+    return {'status': 'ok'}
 
 
 async def _complete_antigravity_oauth(request: Request, state: str):
@@ -569,6 +595,7 @@ async def refresh_antigravity_quota(cred_id: str, request: Request):
             kind="antigravity",
             credential_id=cred_id,
             timeout_seconds=30,
+            quota=True,
         )
     except Exception as exc:
         if getattr(exc, "reason", "") == "busy_timeout":
@@ -587,8 +614,10 @@ async def refresh_antigravity_quota(cred_id: str, request: Request):
         logger.warning("Quota refresh failed for %s: %s", cred_id, failure.message)
         return JSONResponse(status_code=502, content={"error": failure.public()})
     finally:
-        await client.aclose()
-        await pool.release(credential)
+        try:
+            await client.aclose()
+        finally:
+            await pool.release(credential, quota=True)
 
 
 @router.post("/credentials/antigravity/{cred_id}/verify")

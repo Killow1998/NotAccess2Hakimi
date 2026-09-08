@@ -11,6 +11,7 @@ from typing import Any
 
 
 _ALLOWED_FIELDS = frozenset({
+    "request_id", "model", "failure_type", "upstream_status", "cooldown_scope",
     "method",
     "route",
     "status",

@@ -623,7 +623,19 @@ async function startAntigravityOAuth() {
     else if (session.mode === 'local') oauthStatus(tr('已打开 Google 登录页；本机回调成功后会自动完成。', 'The Google sign-in page is open. A successful local callback will complete automatically.'));
     else oauthStatus(tr('已打开 Google 登录页；完成后请复制页面显示的 code 并粘贴回来。', 'The Google sign-in page is open. When finished, copy the code shown by Google and paste it here.'));
     if (session.mode === 'local') pollAntigravityOAuth(session);
-  } catch (error) { toast(error.message, 'error'); }
+  } catch (error) {
+    if (error.data?.error?.type === 'oauth_client_configuration_required') {
+      sharingModal(tr('配置 Antigravity 登录','Configure Antigravity sign-in'), `<p>${tr('服务器缺少配套的 OAuth 客户端配置，请由管理员填写。','The server needs a matching OAuth client configuration from the administrator.')}</p><div class="form-group"><label for="oauthClientId">Client ID</label><input id="oauthClientId"></div><div class="form-group"><label for="oauthClientSecret">Client secret</label><input id="oauthClientSecret" type="password" autocomplete="new-password"></div><div class="form-actions"><button class="btn-ghost" onclick="closeModal()">${tr('取消','Cancel')}</button><button class="btn-primary" onclick="saveOAuthClient()">${tr('保存并登录','Save and sign in')}</button></div>`);
+    } else toast(error.message, 'error');
+  }
+}
+
+async function saveOAuthClient() {
+  try {
+    await api('PUT','/api/credentials/antigravity/oauth/client',{client_id:value('oauthClientId'),client_secret:value('oauthClientSecret')});
+    document.getElementById('oauthClientSecret').value='';
+    closeModal(); await startAntigravityOAuth();
+  } catch(error) { modalError(error.message); }
 }
 
 function openAntigravityOAuthModal(session) {
