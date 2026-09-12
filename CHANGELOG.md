@@ -15,6 +15,7 @@ All notable changes to NotAccess2Hakimi are documented here.
 - Run CI on Windows, Linux and macOS with platform-appropriate filesystem checks.
 - Fix startup on Windows with Python 3.11/3.12 when diagnostic logging cannot
   use descriptor-based permission changes.
+- Keep local build caches and virtual environments out of source distributions.
 
 ## [0.6.0]
 

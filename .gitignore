@@ -22,5 +22,6 @@ _*.txt
 _*.js
 _*.ts
 _*.md
-!__init__.py
+!/src/**/__init__.py
+!/tests/**/__init__.py
 chatwithgemini.pdf

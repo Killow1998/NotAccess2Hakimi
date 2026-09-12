@@ -24,4 +24,6 @@
   not establish sustained upstream capacity or a long-term failure rate.
 - The deployed update preserved existing account IDs and the API key; the
   previous working changes, environment and configuration were backed up.
+- The wheel includes the Web UI and the tested source; the source distribution
+  retains package initializers while excluding local caches and runtime state.
 - CI tests Windows, Linux and macOS.

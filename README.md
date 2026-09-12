@@ -2,7 +2,7 @@
 
 OpenAI-compatible Gemini proxy with account pooling and built-in traffic metering.
 
-> Current release: **v0.6.0** — single-account setup, diagnosis, and generic client handoff.
+> Current release: **v0.6.1** — concurrent generation, reliable login renewal, and cross-platform startup.
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
