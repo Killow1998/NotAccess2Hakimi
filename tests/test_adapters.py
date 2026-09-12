@@ -638,6 +638,48 @@ async def test_non_gemini_group_does_not_replace_gemini_fallback(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("default_client,secret,expected", [
+    (True, "", "fixture-default-secret"),
+    (True, "custom-secret", "custom-secret"),
+    (False, "", None),
+    (False, "custom-secret", "custom-secret"),
+])
+async def test_refresh_preserves_client_pair_and_completes_legacy_default(
+    monkeypatch, default_client, secret, expected,
+):
+    from hakimi_proxy import oauth
+
+    forms = []
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def post(self, url, **kwargs):
+            forms.append(kwargs["data"])
+            return httpx.Response(200, request=httpx.Request("POST", url), json={
+                "access_token": "refreshed-access", "expires_in": 3600,
+            })
+
+    monkeypatch.setattr(oauth, "DEFAULT_CLIENT_SECRET", "fixture-default-secret")
+    monkeypatch.setattr(antigravity_module.httpx, "AsyncClient", lambda **kwargs: Client())
+    pooled = _make_ag_cred()
+    pooled.credential.client_id = oauth.DEFAULT_CLIENT_ID if default_client else "other-client"
+    pooled.credential.client_secret = secret
+
+    await AntigravityAdapter().refresh_credential(pooled)
+
+    assert forms[0]["client_id"] == pooled.credential.client_id
+    assert forms[0].get("client_secret") == expected
+    assert ("client_secret" in forms[0]) == (expected is not None)
+    assert pooled.credential.client_secret == secret
+    assert pooled.credential.access_token == "refreshed-access"
+
+
+@pytest.mark.asyncio
 async def test_antigravity_refresh_rotates_token_once_for_concurrent_requests(monkeypatch):
     calls = 0
     updates = []

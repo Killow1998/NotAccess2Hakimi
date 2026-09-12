@@ -27,6 +27,7 @@ from hakimi_proxy.adapters.base import UpstreamAdapter
 from hakimi_proxy.config import AntigravityCredential
 from hakimi_proxy.errors import UpstreamError, UpstreamFailure, classify_exception, classify_response
 from hakimi_proxy.model_catalog import ANTIGRAVITY_MODELS, resolve_antigravity_model
+from hakimi_proxy.oauth import resolve_client_secret
 from hakimi_proxy.pool import PooledCredential
 
 logger = logging.getLogger(__name__)
@@ -442,8 +443,9 @@ class AntigravityAdapter(UpstreamAdapter):
                     "refresh_token": ag.refresh_token,
                     "grant_type": "refresh_token",
                 }
-                if ag.client_secret:
-                    token_data["client_secret"] = ag.client_secret
+                client_secret = resolve_client_secret(ag.client_id, ag.client_secret)
+                if client_secret:
+                    token_data["client_secret"] = client_secret
                 resp = await client.post(
                     OAUTH_TOKEN_URL,
                     data=token_data,

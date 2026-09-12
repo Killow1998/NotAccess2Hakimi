@@ -364,6 +364,11 @@ required from the user in the Web UI. If the config already contains one
 Antigravity account, Hakimi reuses its client ID and secret for the browser
 flow.
 
+Older configs that contain the default client ID but no client secret use the
+same bundled pair for login and token refresh. An explicitly configured secret
+or a different client ID is preserved; custom public clients keep an empty
+secret. Account refresh tokens remain private local data and are never bundled.
+
 Access tokens are refreshed on demand five minutes before expiry, with a
 per-account lock to avoid duplicate refreshes. If Google rotates the refresh
 token, the new value is persisted locally. This is not an artificial keepalive:

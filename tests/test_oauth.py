@@ -135,3 +135,21 @@ def test_default_client_missing_secret_fails_before_authorization():
     assert 'configured-secret' not in str(session)
     manager.record_callback(session['state'], 'code', '')
     assert manager.claim_code(session['state'])[4] == 'configured-secret'
+
+
+def test_default_client_legacy_config_can_sign_in_without_manual_secret():
+    from hakimi_proxy.config import ProxyConfig, AntigravityCredential
+    config = ProxyConfig()
+    for source in ("application", "credential"):
+        config.antigravity_client_id = oauth_module.DEFAULT_CLIENT_ID if source == "application" else ""
+        config.antigravity_credentials = [AntigravityCredential(
+            "legacy", oauth_module.DEFAULT_CLIENT_ID, "", "fixture-refresh"
+        )]
+        client_id, secret = oauth_module.resolve_oauth_client(config)
+        assert secret == oauth_module.DEFAULT_CLIENT_SECRET
+        manager = AntigravityOAuthManager(client_id=client_id, client_secret=secret)
+        session = manager.start("remote")
+        assert session["authorization_url"]
+        assert secret not in str(session)
+        assert config.antigravity_client_secret == ""
+        assert config.antigravity_credentials[0].client_secret == ""

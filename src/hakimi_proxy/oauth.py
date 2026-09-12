@@ -55,14 +55,25 @@ def validate_oauth_client(client_id: str, client_secret: str) -> None:
         raise OAuthConfigurationError('Antigravity OAuth client configuration is incomplete. Configure the matching client secret before signing in.')
 
 
+def resolve_client_secret(client_id: str, client_secret: str) -> str:
+    """Complete the known shared client without changing a custom client pair."""
+    if client_id == DEFAULT_CLIENT_ID and not client_secret:
+        return DEFAULT_CLIENT_SECRET
+    return client_secret
+
+
 def resolve_oauth_client(config) -> tuple[str, str]:
-    """Select an entire client pair; an empty secret denotes a public client."""
+    """Resolve a configured pair, completing only the known default application."""
+    client_id, client_secret = OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET
     if config.antigravity_client_id.strip():
-        return config.antigravity_client_id.strip(), config.antigravity_client_secret.strip()
-    credential = next(iter(config.antigravity_credentials), None)
-    if credential and credential.client_id.strip():
-        return credential.client_id.strip(), credential.client_secret.strip()
-    return OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET
+        client_id = config.antigravity_client_id.strip()
+        client_secret = config.antigravity_client_secret.strip()
+    else:
+        credential = next(iter(config.antigravity_credentials), None)
+        if credential and credential.client_id.strip():
+            client_id = credential.client_id.strip()
+            client_secret = credential.client_secret.strip()
+    return client_id, resolve_client_secret(client_id, client_secret)
 
 
 @dataclass(frozen=True)

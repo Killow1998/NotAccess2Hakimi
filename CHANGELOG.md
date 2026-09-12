@@ -2,13 +2,15 @@
 
 All notable changes to NotAccess2Hakimi are documented here.
 
-## [0.6.1] - 2026-09-08
+## [0.6.1] - 2026-09-12
 
 - Allow concurrent Antigravity generation without a local per-account cap;
   keep quota queries independent of generation capacity.
 - Isolate model-specific upstream rate limits without blocking other models.
 - Correlate EMP requests and upstream failures using content-free request IDs.
 - Include the default installed-app OAuth client metadata and validate custom clients.
+- Complete missing default-client metadata in older configurations during both
+  browser login and token refresh, while preserving custom client pairs.
 - Add a PowerShell quota query with compact reset countdowns.
 - Run CI on Windows, Linux and macOS with platform-appropriate filesystem checks.
 
