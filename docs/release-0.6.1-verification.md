@@ -13,4 +13,13 @@
 - Login and token refresh share default-client completion. A missing-secret
   refresh regression fails without this completion; explicit custom secrets and
   secretless custom clients retain their original behavior.
+- Linux live acceptance: the OAuth check, control plane and Gemini 3.8 Flash
+  inference succeeded. Two simultaneous Gemini 3.7/3.8 Flash Responses streams
+  returned HTTP 200, nonempty text and `response.completed`; request IDs were
+  present, observed in-flight requests reached 2 and returned to 0.
+  The short prompts used a 256-token output allowance because a reasoning model
+  can exhaust a 32-token allowance before returning text. This smoke check does
+  not establish sustained upstream capacity or a long-term failure rate.
+- The deployed update preserved existing account IDs and the API key; the
+  previous working changes, environment and configuration were backed up.
 - CI tests Windows, Linux and macOS.
