@@ -82,7 +82,9 @@ class DiagnosticJournal:
                     flags |= os.O_NOFOLLOW
                 fd = os.open(self.path, flags, 0o600)
                 try:
-                    os.fchmod(fd, 0o600)
+                    # Windows only provides fchmod starting with Python 3.13.
+                    if hasattr(os, "fchmod"):
+                        os.fchmod(fd, 0o600)
                     remaining = memoryview(line)
                     while remaining:
                         written = os.write(fd, remaining)

@@ -13,6 +13,8 @@ All notable changes to NotAccess2Hakimi are documented here.
   browser login and token refresh, while preserving custom client pairs.
 - Add a PowerShell quota query with compact reset countdowns.
 - Run CI on Windows, Linux and macOS with platform-appropriate filesystem checks.
+- Fix startup on Windows with Python 3.11/3.12 when diagnostic logging cannot
+  use descriptor-based permission changes.
 
 ## [0.6.0]
 

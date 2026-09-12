@@ -3,6 +3,7 @@
 from tests.platform_assertions import assert_storage_access
 
 import json
+import os
 import pytest
 
 from httpx2 import ASGITransport, AsyncClient
@@ -31,6 +32,18 @@ def test_journal_keeps_only_allowlisted_fields_and_private_modes(tmp_path):
     assert "secret" not in path.read_text(encoding="utf-8")
     assert_storage_access(path)
     assert_storage_access(path.parent)
+
+
+def test_journal_writes_without_fd_permission_support(tmp_path, monkeypatch):
+    monkeypatch.delattr(os, "fchmod", raising=False)
+    path = tmp_path / "diagnostics.jsonl"
+    journal = DiagnosticJournal(path)
+
+    journal.record("startup", version="0.6.1")
+
+    assert journal.enabled is True
+    assert json.loads(path.read_text(encoding="utf-8"))["event"] == "startup"
+    assert_storage_access(path)
 
 
 def test_journal_rotates_at_a_bounded_size(tmp_path):

@@ -1,6 +1,8 @@
 # 0.6.1 verification
 
-- Windows native PowerShell 7.6.5: 265 pytest cases passed.
+- Windows native PowerShell 7.6.5, Python 3.11.14: 266 pytest cases passed.
+- Startup logging is verified without `os.fchmod`, which is unavailable on
+  Windows before Python 3.13. The regression fails without the capability check.
 - Reliability gate: 500/500 requests at client concurrency 8; no leaked leases;
   tool-call round trip and simulated 429 failover, upstream 503 and timeout passed.
   This is not a real Antigravity capacity benchmark.
